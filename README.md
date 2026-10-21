@@ -1,7 +1,8 @@
 # acctx
 
 Switch between accounts for developer CLIs. Supported: Vercel, Convex, GitHub
-(`gh`), Supabase, Cloudflare (`wrangler`). Adding a provider is one small file.
+(`gh`), Supabase, Cloudflare (`wrangler`), Clerk. Adding a provider is one
+small file.
 
 ```
 acctx import vercel personal     # save the account you are logged into right now
@@ -37,6 +38,7 @@ Colors are used only on a terminal and honor `NO_COLOR` / `FORCE_COLOR`.
 | `github` | `$GH_CONFIG_DIR/hosts.yml` | isolated (`GH_CONFIG_DIR`) | `gh auth status` / `gh api user`; offline `user:` fingerprint |
 | `supabase` | `~/.supabase/access-token` | in place (`supabase login`) | `supabase whoami` with the token passed as an env var |
 | `cloudflare` | `$XDG_CONFIG_HOME/.wrangler/config/default.toml` | isolated (`XDG_CONFIG_HOME`) | `wrangler whoami` on a staged copy |
+| `clerk` | OS keyring entry `clerk-cli/oauth-access-token` (+ `config.json`) | in place (`clerk auth login`) | Clerk OAuth userinfo, refreshing expired sessions; offline `userId` fingerprint |
 
 `acctx providers <id>` prints the full explanation: the exact files, how a new
 login is obtained, how identity is checked, which environment variables make
@@ -45,13 +47,18 @@ keyring storage, and what has actually been verified against the real CLI.
 
 ## How it works
 
-A profile is a copy of the provider CLI's own credential files, kept under
+A profile is a copy of the provider CLI's own credentials, kept under
 `$XDG_CONFIG_HOME/acctx/profiles/<provider>/<name>/` with `0700`/`0600`
 permissions. `use` first re-captures the live files into the active profile
 (Vercel rotates refresh tokens, so a one-time snapshot would go stale), then
 atomically writes the target profile's files into the CLI's real location. No
 environment variables or shell aliases are needed: every tool that shells out
 to `vercel` sees the switched account.
+
+Providers whose CLI keeps the login in an OS keyring rather than a file (Clerk)
+implement a small live-store adapter: acctx reads and writes the keyring entry
+through the platform tools (`keyctl` or `secret-tool` on Linux, `security` on
+macOS), passing the secret over stdin, never as an argument.
 
 Vercel logins for `add` happen in an isolated directory via
 `vercel login --global-config`, so the active login is untouched until you
@@ -82,7 +89,9 @@ Exercised against real CLIs on Linux: Vercel and Convex end to end with two
 accounts each (add, use, check, rename, remove); GitHub and Supabase for
 import, check, list and use with a cloned profile (their login flows were not
 run); Cloudflare only for the config location and the logged-out `whoami`
-path, so its add/check/use are unverified. Each provider's `verified` line in
+path, so its add/check/use are unverified; Clerk for import, check, list and
+use with a cloned profile on the Linux kernel-keyring backend (secret-service
+and macOS Keychain paths unexercised, login flow not run). Each provider's `verified` line in
 `acctx providers <id>` says the same.
 
 ## Install

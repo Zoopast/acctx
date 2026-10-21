@@ -11,6 +11,8 @@ export interface RunOptions {
   cwd?: string;
   /** Kill the child after this many ms (pipe mode only; login flows are never limited). */
   timeoutMs?: number;
+  /** Written to the child's stdin then closed (pipe mode only). Secrets travel this way, never as arguments. */
+  input?: string;
 }
 
 /** Everything a provider needs from the outside world, injectable for tests. */
@@ -35,7 +37,7 @@ export function realEnv(vars: Record<string, string | undefined> = process.env):
     run(cmd, args, opts) {
       return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, {
-          stdio: opts.stdio === "inherit" ? "inherit" : ["ignore", "pipe", "pipe"],
+          stdio: opts.stdio === "inherit" ? "inherit" : [opts.input !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
           env: { ...vars, ...opts.env },
           ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
         });
@@ -45,6 +47,7 @@ export function realEnv(vars: Record<string, string | undefined> = process.env):
         child.stdout?.on("data", (d) => (stdout += d));
         child.stderr?.on("data", (d) => (stderr += d));
         child.on("error", reject);
+        if (opts.input !== undefined && child.stdin) { child.stdin.on("error", () => {}); child.stdin.end(opts.input); }
         child.on("close", (code) => { if (timer) clearTimeout(timer); resolve({ code: code ?? 1, stdout, stderr }); });
       });
     },

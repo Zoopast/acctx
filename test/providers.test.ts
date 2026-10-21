@@ -21,7 +21,8 @@ test("every provider satisfies the contract (scalability guard)", () => {
     else assert.ok(p.loginInPlace, `${p.id}: in-place but no loginInPlace`);
     const files = p.files(fakeEnv("/h"));
     assert.ok(files.some((f) => f.required), `${p.id}: no required file`);
-    for (const f of files) { assert.ok(path.isAbsolute(f.path)); assert.equal(f.mode, 0o600); }
+    for (const f of files) { assert.ok(f.virtual || path.isAbsolute(f.path), `${p.id}: ${f.path}`); assert.equal(f.mode, 0o600); }
+    if (files.some((f) => f.virtual)) assert.ok(p.liveStore, `${p.id}: virtual file needs a liveStore`);
     if (p.layout) for (const name of Object.keys(p.layout)) assert.ok(files.some((f) => f.name === name), `${p.id}: layout names unknown file ${name}`);
     for (const f of files) assert.doesNotMatch(f.name, /\//, "flat names only");
   }

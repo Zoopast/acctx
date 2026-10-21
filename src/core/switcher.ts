@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { copyAtomic, ensureDir, exists, removeIfExists } from "./fsx.js";
+import { copyAtomic, ensureDir, exists, removeIfExists, writeAtomic } from "./fsx.js";
+import { FileLiveStore, type LiveStore } from "./livestore.js";
 import { UserError } from "./errors.js";
 import type { Store, ProfileMeta } from "./store.js";
 import type { Env } from "./env.js";
@@ -15,9 +16,13 @@ export interface SwitchOptions {
 export class Switcher {
   constructor(private readonly store: Store, readonly env: Env) {}
 
-  /** True when at least one required live file exists. */
-  liveExists(provider: Provider): boolean {
-    return provider.files(this.env).some((f) => f.required && exists(f.path));
+  liveStore(provider: Provider): LiveStore {
+    return provider.liveStore ? provider.liveStore(this.env) : new FileLiveStore(provider.files(this.env));
+  }
+
+  /** True when the provider's live login is present. */
+  liveExists(provider: Provider): Promise<boolean> {
+    return this.liveStore(provider).exists();
   }
 
   private async fingerprintOf(provider: Provider, pathFor: (name: string) => string): Promise<string | null> {
@@ -30,9 +35,25 @@ export class Switcher {
     return provider.fingerprint(paths);
   }
 
-  liveFingerprint(provider: Provider): Promise<string | null> {
-    const byName = new Map(provider.files(this.env).map((f) => [f.name, f.path]));
-    return this.fingerprintOf(provider, (n) => byName.get(n) ?? "");
+  async liveFingerprint(provider: Provider): Promise<string | null> {
+    if (!provider.fingerprint) return null;
+    // Fingerprints are computed from paths; materialize the live entries in a scratch dir.
+    const live = await this.liveStore(provider).read();
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "acctx-fp-"));
+    await fs.chmod(scratch, 0o700);
+    try {
+      const paths: Record<string, string> = {};
+      for (const f of provider.files(this.env)) {
+        const data = live[f.name];
+        if (!data) continue;
+        const p = path.join(scratch, f.name);
+        await writeAtomic(p, data, f.mode);
+        paths[f.name] = p;
+      }
+      return await provider.fingerprint(paths);
+    } finally {
+      await fs.rm(scratch, { recursive: true, force: true });
+    }
   }
 
   profileFingerprint(provider: Provider, name: string): Promise<string | null> {
@@ -42,13 +63,15 @@ export class Switcher {
 
   /** Copy live credential files into a profile dir. Returns false if nothing live. */
   async captureLive(provider: Provider, name: string): Promise<boolean> {
-    if (!this.liveExists(provider)) return false;
+    if (!(await this.liveExists(provider))) return false;
     const dir = this.store.profileDir(provider.id, name);
     await ensureDir(path.dirname(dir), 0o700);
     await ensureDir(dir, 0o700);
+    const live = await this.liveStore(provider).read();
     for (const f of provider.files(this.env)) {
       const dst = path.join(dir, f.name);
-      if (exists(f.path)) await copyAtomic(f.path, dst, f.mode);
+      const data = live[f.name];
+      if (data) await writeAtomic(dst, data, f.mode);
       else await removeIfExists(dst);
     }
     return true;
@@ -56,7 +79,7 @@ export class Switcher {
 
   /** Save the live login as `name` and mark it active. */
   async importLive(provider: Provider, name: string): Promise<ProfileMeta> {
-    if (!this.liveExists(provider)) {
+    if (!(await this.liveExists(provider))) {
       throw new UserError(
         `No live ${provider.displayName} login found to import.`,
         `Log in with the ${provider.displayName} CLI first, or run: acctx add ${provider.id} ${name}`,
@@ -79,7 +102,7 @@ export class Switcher {
    * never destroys a login. Re-captures rotated tokens into the active profile.
    */
   async stashLive(provider: Provider, opts: SwitchOptions = {}): Promise<void> {
-    if (!this.liveExists(provider)) return;
+    if (!(await this.liveExists(provider))) return;
     const state = await this.store.readState();
     const active = state.active[provider.id];
     if (active && (await this.store.hasProfile(provider.id, active))) {
@@ -177,15 +200,17 @@ export class Switcher {
     }
   }
 
-  /** Copy a profile's files over the live location (atomic per file). */
+  /** Write a profile's entries over the live store (atomic per file). */
   private async applyProfile(provider: Provider, name: string): Promise<void> {
     const dir = this.store.profileDir(provider.id, name);
+    const entries: Record<string, Buffer | null> = {};
     for (const f of provider.files(this.env)) {
       const src = path.join(dir, f.name);
-      if (exists(src)) await copyAtomic(src, f.path, f.mode);
+      if (exists(src)) entries[f.name] = await fs.readFile(src);
       else if (f.required) throw new UserError(`Profile ${provider.id}/${name} is missing ${f.name}.`, "Remove and re-add it.");
-      else await removeIfExists(f.path);
+      else entries[f.name] = null;
     }
+    await this.liveStore(provider).write(entries);
   }
 
   /** Obtain a brand-new login and save it as a profile. */
@@ -223,9 +248,9 @@ export class Switcher {
       throw new UserError(`A profile name is required for ${provider.displayName}.`, `Example: acctx add ${provider.id} work`);
     }
     await this.stashLive(provider, opts);
-    for (const f of provider.files(this.env)) await removeIfExists(f.path);
+    await this.liveStore(provider).write(Object.fromEntries(provider.files(this.env).map((f) => [f.name, null])));
     await provider.loginInPlace(this.env);
-    if (!this.liveExists(provider)) {
+    if (!(await this.liveExists(provider))) {
       throw new UserError(`${provider.displayName} login did not complete; nothing saved.`,
         `Your previous login is still saved. Restore it with: acctx use ${provider.id} <name>`);
     }
