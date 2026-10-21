@@ -219,8 +219,9 @@ with `ACCTX_DEBUG=1`, after redaction).
 - **Providers:** GitHub (isolated via `GH_CONFIG_DIR`), Supabase (in place,
   token passed to `whoami` through the environment, never argv), Cloudflare
   wrangler (isolated via `XDG_CONFIG_HOME` + layout staging; login flow not
-  verified). Clerk was evaluated and skipped: its config holds only a user id
-  and the token is kept elsewhere (keyring).
+  verified). Clerk was evaluated and skipped: its config file holds only a user
+  id, no token was found in any file, and the CLI reports "not logged in"
+  on this machine, so there was nothing to capture or verify.
 - **UI.** One `ui.ts`: data on stdout, status on stderr (so `--json` and
   pipes stay clean), ✓/✗/● symbols, color only on a TTY honoring `NO_COLOR`,
   styled help, arrow-key picker for `use` (numbered fallback, Esc cancels,
