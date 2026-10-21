@@ -1,0 +1,189 @@
+# acctx — multi-account switcher for developer CLIs
+
+Date: 2026-10-21 · Status: approved-by-assumption (see "Assumptions")
+
+## Intent
+
+Switch the locally logged-in account of developer CLIs (Vercel first, Convex
+second) with one command, without pasting tokens, without losing the previous
+login, and without leaving a half-written credential file behind.
+
+Who it is for: a developer with several Vercel accounts (personal, client,
+team) who today logs out and in again by hand.
+
+Success looks like:
+
+```
+acctx add vercel work        # logs in via Vercel's own device flow, saves as "work"
+acctx use vercel personal    # vercel whoami now reports the personal account
+acctx use                    # interactive picker across providers
+acctx list                   # shows every saved profile and which is active
+```
+
+## Assumptions (the user did not say these; correct me)
+
+1. Node.js 24 + TypeScript, ESM, zero runtime dependencies. Tests with `node:test`.
+2. The binary is named `acctx` (like `kubectx`). Package is `account-switcher`.
+3. Credentials live in plain files with strict permissions, not the OS keyring.
+   WSL2 here has `secret-tool` but no running keyring daemon, so a keyring
+   dependency would fail on exactly this machine. The store is designed so a
+   keyring backend can be added later behind the same interface.
+4. Switching rewrites the provider's real credential location (for Vercel:
+   `~/.local/share/com.vercel.cli/`). The alternative, keeping one directory per
+   profile and pointing at it with an env var, was rejected: anything that
+   shells out to `vercel` without that env var (IDE plugins, the Vercel MCP
+   server, CI scripts) would silently use the wrong account.
+
+## Facts that shape the design (verified on this machine)
+
+- Vercel CLI 58.9 stores `auth.json` = `{token, userId, refreshToken, expiresAt}`
+  (file mode 0600) and `config.json` = `{currentTeam, telemetry}` in
+  `$XDG_DATA_HOME/com.vercel.cli` (default `~/.local/share/com.vercel.cli`).
+- **Tokens rotate.** `refreshToken`/`expiresAt` change while a profile is in
+  use. A switcher that only snapshots once will restore stale tokens. Therefore
+  `use` must first re-capture the live files into the currently active profile.
+- `config.json`'s `currentTeam` belongs to the account. Switching the token but
+  not the team leaves the CLI pointing at a team the new token cannot access.
+  So `config.json` is part of a Vercel profile. `telemetry-*.json` and
+  `agent-preferences.json` are not.
+- `vercel <cmd> --global-config <dir>` (`-Q`) isolates completely. With an
+  `auth.json` containing `{}` the CLI starts a fresh device-code login and
+  saves into that dir. This gives `add` a way to log into a *new* account
+  without touching the active one.
+- Convex CLI stores `~/.convex/config.json` = `{accessToken}`. There is no
+  config-dir flag. Deleting the file logs out; `npx convex login` logs in.
+- Credential file formats may change between CLI versions, so adapters copy
+  files as opaque bytes and parse only optional label fields (`userId`).
+
+## Architecture
+
+```
+src/
+  cli.ts              arg parsing + command dispatch (no framework)
+  commands/*.ts       one file per command: add, use, list, current, remove, import
+  core/store.ts       profile store on disk (atomic writes, permissions)
+  core/switcher.ts    the sync-then-swap algorithm
+  core/redact.ts      strips anything token-like from error output
+  providers/types.ts  Provider contract
+  providers/vercel.ts
+  providers/convex.ts
+  providers/index.ts  registry: adding a provider = one file + one line here
+```
+
+### Provider contract
+
+```ts
+interface CredentialFile { name: string; path: string; required: boolean; mode: number }
+
+interface Provider {
+  id: string;                      // "vercel"
+  displayName: string;             // "Vercel"
+  files(env: Env): CredentialFile[];
+  /** How a NEW login is obtained without destroying the live one. */
+  loginMode: "isolated" | "in-place";
+  /** isolated: log into `dir` (a scratch dir) using the provider's own CLI. */
+  loginIsolated?(dir: string, env: Env): Promise<void>;
+  /** in-place: live files were already stashed; run the provider's login. */
+  loginInPlace?(env: Env): Promise<void>;
+  /** Human label for a profile dir: email / username / userId. Never a token. */
+  identify(dir: string, env: Env): Promise<Identity | null>;
+}
+```
+
+`Env` carries `HOME`, `XDG_DATA_HOME`, `PATH` and a `run()` for subprocesses so
+tests can inject fakes. Vercel is `isolated` (uses `-Q`). Convex is `in-place`.
+
+### Store layout
+
+```
+$XDG_CONFIG_HOME/acctx/          (0700; override with ACCTX_HOME)
+  state.json                     { "active": { "vercel": "work" } }
+  profiles/vercel/work/
+    meta.json                    { label, identity, createdAt, updatedAt }
+    auth.json                    (0600, opaque copy)
+    config.json
+  profiles/convex/personal/
+    meta.json
+    config.json
+```
+
+All writes go through `writeAtomic(path, bytes, mode)`: write to
+`path.tmp-<pid>`, fsync, rename. A crash never leaves a truncated credential.
+
+### The `use` algorithm (core/switcher.ts)
+
+1. Resolve target profile; fail if missing.
+2. If `state.active[provider]` names profile A and A still exists:
+   copy live files → A (captures rotated tokens).
+3. Else if live files exist and no active pointer: refuse with
+   "live credentials are not saved; run `acctx import <provider> <name>` or pass
+   `--discard`". Never silently destroy an unknown login.
+4. Copy target files → live location, each atomically, with the provider's
+   declared mode. Missing optional files are deleted from the live location so
+   nothing from the previous account leaks (e.g. `currentTeam`).
+5. Update `state.active[provider]`, then print the identity label.
+
+### The `add` algorithm
+
+- isolated: create scratch dir (0700) seeded per provider (Vercel: `auth.json`
+  = `{}`), call `loginIsolated`, `identify`, copy into the new profile, delete
+  scratch. The live login is untouched; `use` activates it later.
+- in-place: run step 2/3 of `use` (stash live), delete live files, call
+  `loginInPlace`, copy live → new profile, set it active. The previous account
+  is safe in its profile.
+
+`import <provider> <name>` saves whatever is live right now and marks it active.
+This is also the onboarding step for an existing login.
+
+### Commands
+
+| command | behavior |
+|---|---|
+| `acctx add <provider> [name]` | new login, saved as profile; name defaults to identity |
+| `acctx import <provider> <name>` | save current live login |
+| `acctx use [provider] [name]` | switch; interactive picker when args missing |
+| `acctx list [provider]` | table: provider, name, label, active marker |
+| `acctx current [provider]` | active profile(s) |
+| `acctx remove <provider> <name>` | delete profile (refuses if active unless `--force`) |
+| `acctx providers` | list supported providers |
+
+Exit codes: 0 ok, 1 user error (message, no stack), 2 unexpected (stack only
+with `ACCTX_DEBUG=1`, after redaction).
+
+## Security rules
+
+- Store dir 0700, credential copies 0600, umask set to 077 at startup.
+- Tokens are never accepted as arguments and never printed, including in
+  `--debug`; `redact()` masks any value of a key matching
+  `/token|secret|key|password/i` and any string ≥ 32 chars of `[A-Za-z0-9_-]`
+  before it reaches stderr.
+- acctx makes no network calls itself; only the provider's own CLI does, as a
+  child process with inherited stdio so the user sees the real login prompt.
+- No dependencies, so no supply-chain surface beyond Node and the provider CLI.
+- `remove` deletes files; it does not revoke tokens server-side (the user can
+  run `vercel logout` after `use` if they want revocation). Documented.
+
+## Error handling
+
+- Provider CLI not on PATH → clear message naming the install command.
+- Login cancelled / timed out → scratch dir removed, nothing saved.
+- Switch interrupted between files → the previous step's atomic rename means
+  each file is either old or new; `acctx use` again repairs it (idempotent).
+- Unknown provider / profile → list the valid names.
+
+## Testing
+
+- `core/store` and `core/switcher`: unit tests with a fake provider writing to
+  a temp `ACCTX_HOME` and temp "live" paths. Covers rotation re-capture, the
+  unsaved-live refusal, atomic write, permissions, idempotent re-run.
+- `providers/vercel`: tests with a fake `vercel` script on PATH that writes a
+  dummy `auth.json` when invoked with `login -Q <dir>`, and prints a name for
+  `whoami`.
+- `providers/convex`: same pattern with a fake `npx`.
+- CLI: argument parsing and exit codes.
+
+## Out of scope (v1)
+
+OS keyring backend, team switching inside one account (`vercel switch` already
+does this), shell completions, auto-detecting the right profile per project
+directory. Each is a natural follow-up and none changes the contracts above.
