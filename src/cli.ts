@@ -18,6 +18,7 @@ export interface Context {
   flags: Record<string, string | boolean>;
   ui: Ui;
   interactive: boolean;
+  cwd: string;
 }
 
 export function parseArgs(argv: string[]): { positional: string[]; flags: Record<string, string | boolean> } {
@@ -43,7 +44,7 @@ export async function main(argv: string[]): Promise<number> {
   const store = new Store(root);
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !flags["non-interactive"];
   const ui = createUi({ env: env.vars, interactive });
-  const ctx: Context = { store, switcher: new Switcher(store, env), args: positional.slice(1), flags, ui, interactive };
+  const ctx: Context = { store, switcher: new Switcher(store, env), args: positional.slice(1), flags, ui, interactive, cwd: process.cwd() };
   const cmd = positional[0];
   if (!cmd || (flags["help"] && !cmd) || flags["version"]) {
     if (flags["version"]) { ui.out("acctx 0.1.0"); return 0; }

@@ -4,6 +4,9 @@ import path from "node:path";
 import type { Env, RunOptions, RunResult } from "../src/core/env.js";
 import type { Provider } from "../src/providers/types.js";
 import { Store } from "../src/core/store.js";
+import { Switcher } from "../src/core/switcher.js";
+import { createUi } from "../src/core/ui.js";
+import type { Context } from "../src/cli.js";
 
 export async function tmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "acctx-test-"));
@@ -71,4 +74,10 @@ export async function setup() {
   const store = new Store(path.join(home, ".config", "acctx"));
   await store.init();
   return { home, store, env: fakeEnv(home) };
+}
+
+export function testContext(opts: { store: Store; env: Env; cwd?: string; args?: string[]; flags?: Record<string, string | boolean>; interactive?: boolean }): Context & { out: string[]; err: string[] } {
+  const out: string[] = []; const err: string[] = [];
+  const ui = createUi({ env: { NO_COLOR: "1" }, interactive: opts.interactive ?? false, writeOut: (s) => out.push(s), writeErr: (s) => err.push(s) });
+  return { store: opts.store, switcher: new Switcher(opts.store, opts.env), args: opts.args ?? [], flags: opts.flags ?? {}, ui, interactive: opts.interactive ?? false, cwd: opts.cwd ?? opts.env.home, out, err };
 }
