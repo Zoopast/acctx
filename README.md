@@ -8,9 +8,22 @@ acctx import vercel personal     # save the account you are logged into right no
 acctx add vercel work            # log into another account (Vercel's own device flow)
 acctx use vercel work            # switch — `vercel whoami` now reports "work"
 acctx use                        # interactive picker
-acctx list
-acctx rename vercel work client   # renames; the active pointer follows
+acctx list                       # grouped by provider; --json for scripts
+acctx rename vercel work client  # renames; the active pointer follows
 ```
+
+`acctx list` output:
+
+```
+Vercel
+  ● work     octocat-at-acmeinc  team team_Ab12Cd…Kl12  active · 2m ago
+    octocat                      team team_Mn34Op…Wx34  3h ago
+
+Convex
+  no profiles yet · acctx add convex <name>
+```
+
+Colors are used only on a terminal and honor `NO_COLOR` / `FORCE_COLOR`.
 
 ## How it works
 
