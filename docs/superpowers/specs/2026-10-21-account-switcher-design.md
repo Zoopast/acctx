@@ -50,8 +50,13 @@ acctx list                   # shows every saved profile and which is active
   `auth.json` containing `{}` the CLI starts a fresh device-code login and
   saves into that dir. This gives `add` a way to log into a *new* account
   without touching the active one.
-- Convex CLI stores `~/.convex/config.json` = `{accessToken}`. There is no
-  config-dir flag. Deleting the file logs out; `npx convex login` logs in.
+- Convex CLI stores `~/.convex/config.json` = `{accessToken}` (confirmed on
+  this machine). There is no config-dir flag. Deleting the file logs out and
+  `npx convex login` logs in, per community reports:
+  https://discord-questions.convex.dev/m/1345420072050626702 and
+  https://discord-questions.convex.dev/m/1131204679498477578. In-place
+  `add convex` requires an explicit profile name because the file holds no
+  non-secret identifier to label it from.
 - Credential file formats may change between CLI versions, so adapters copy
   files as opaque bytes and parse only optional label fields (`userId`).
 
@@ -86,9 +91,15 @@ interface Provider {
   /** in-place: live files were already stashed; run the provider's login. */
   loginInPlace?(env: Env): Promise<void>;
   /** Human label for a profile dir: email / username / userId. Never a token. */
+  /** Offline non-secret identifier from the files, for mismatch detection. */
+  fingerprint?(paths: Record<string, string>): Promise<string | null>;
   identify(dir: string, env: Env): Promise<Identity | null>;
 }
 ```
+
+`identify` may refresh credentials inside `dir` (Vercel's `whoami` can rotate
+the token), so after calling it the core treats `dir` as authoritative and
+re-syncs it to the live location when that profile is the active one.
 
 `Env` carries `HOME`, `XDG_DATA_HOME`, `PATH` and a `run()` for subprocesses so
 tests can inject fakes. Vercel is `isolated` (uses `-Q`). Convex is `in-place`.
@@ -113,8 +124,11 @@ All writes go through `writeAtomic(path, bytes, mode)`: write to
 ### The `use` algorithm (core/switcher.ts)
 
 1. Resolve target profile; fail if missing.
-2. If `state.active[provider]` names profile A and A still exists:
-   copy live files → A (captures rotated tokens).
+2. If `state.active[provider]` names profile A and A still exists: compare the
+   live offline fingerprint (Vercel: `userId` from `auth.json`, no network)
+   with A's. If they differ, someone logged in outside acctx; refuse (or skip
+   the capture with `--discard`) so A is never overwritten by a foreign login.
+   Otherwise copy live files → A (captures rotated tokens).
 3. Else if live files exist and no active pointer: refuse with
    "live credentials are not saved; run `acctx import <provider> <name>` or pass
    `--discard`". Never silently destroy an unknown login.

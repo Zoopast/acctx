@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { realEnv } from "./core/env.js";
 import { Store } from "./core/store.js";
 import { Switcher } from "./core/switcher.js";
@@ -65,6 +67,16 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  main(process.argv.slice(2)).then((code) => process.exit(code));
+function isEntryPoint(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(argv1)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
+  main(process.argv.slice(2)).then((code) => { process.exitCode = code; });
 }

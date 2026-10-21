@@ -33,9 +33,21 @@ current login into its profile first and then runs `npx convex login`.
 - acctx makes no network requests. Only the provider's CLI does, as a child
   process you can see.
 - Zero runtime dependencies.
-- `use` refuses to overwrite a live login that is not saved in any profile
-  (pass `--discard` to override). `remove` deletes the local copy only; run the
+- `use` refuses to overwrite a live login that is not saved in any profile,
+  and refuses to capture a login into the active profile when an offline
+  fingerprint (Vercel: `userId`) shows it belongs to a different account, for
+  example after a `vercel login` made outside acctx. Pass `--discard` to
+  override either check. Convex has no non-secret identifier, so that second
+  check does not apply to it. `remove` deletes the local copy only; run the
   provider's `logout` first if you want the token revoked.
+
+## Status
+
+Verified against the real Vercel CLI on this machine: import, identify,
+switching between profiles, and the isolated-directory login mechanism. Not
+yet verified: `add vercel` with a second account, and every Convex flow (the
+Convex CLI was not installed here; its file layout comes from community
+reports linked in the spec).
 
 ## Install
 

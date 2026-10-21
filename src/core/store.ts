@@ -6,6 +6,8 @@ import type { Identity } from "../providers/types.js";
 
 export interface ProfileMeta {
   label: string;
+  /** Offline, non-secret identity fingerprint (provider-specific), if any. */
+  fingerprint?: string;
   identity: Identity | null;
   createdAt: string;
   updatedAt: string;

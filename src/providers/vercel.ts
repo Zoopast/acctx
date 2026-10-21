@@ -33,6 +33,11 @@ export const vercel: Provider = {
     if (res.code !== 0) throw new UserError("Vercel login failed or was cancelled.", "Nothing was saved.");
   },
 
+  async fingerprint(paths) {
+    const auth = paths["auth.json"] ? await readJson<VercelAuth>(paths["auth.json"]) : null;
+    return auth?.userId ?? null;
+  },
+
   async identify(dir, env): Promise<Identity | null> {
     const auth = await readJson<VercelAuth>(path.join(dir, "auth.json"));
     const cfg = await readJson<VercelConfig>(path.join(dir, "config.json"));

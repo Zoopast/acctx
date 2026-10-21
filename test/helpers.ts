@@ -38,6 +38,10 @@ export function fakeProvider(opts: { loginMode?: Provider["loginMode"]; onLogin?
       { name: "config.json", path: path.join(env.home, ".fake", "config.json"), required: false, mode: 0o600 },
     ],
     async loginIsolated(dir) { await opts.onLogin?.(dir); },
+    async fingerprint(paths) {
+      if (!paths["auth.json"]) return null;
+      try { return JSON.parse(await fs.readFile(paths["auth.json"], "utf8")).user ?? null; } catch { return null; }
+    },
     async loginInPlace(env) { await opts.onLogin?.(path.join(env.home, ".fake")); },
     async identify(dir) {
       try {
