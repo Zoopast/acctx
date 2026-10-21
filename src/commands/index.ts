@@ -364,6 +364,7 @@ async function remove(ctx: Context, reg: Registry): Promise<number> {
 }
 
 async function readStdinText(): Promise<string> {
+  if (process.stdin.isTTY) return "";
   const chunks: Buffer[] = [];
   for await (const c of process.stdin) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
   return Buffer.concat(chunks).toString("utf8");

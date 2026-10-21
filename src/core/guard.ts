@@ -1,20 +1,58 @@
 const RUNNERS = new Set(["npx", "bunx", "pnpx"]);
-const DLX = new Set(["pnpm", "yarn", "bun"]);
+const PKG_MANAGERS = new Set(["pnpm", "yarn", "bun", "npm"]);
+const KEYWORDS = new Set(["then", "do", "else", "elif", "if", "while", "until", "{", "!"]);
+const WRAPPERS = new Set(["sudo", "time", "command", "env", "nohup", "exec", "xargs", "nice", "doas"]);
+const WRAPPERS_WITH_FLAGS = new Set(["sudo", "env", "nice", "doas"]);
+const SHELLS = new Set(["bash", "sh", "zsh", "dash"]);
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-/** Provider CLIs invoked in command position of any shell segment. Conservative: it is a tokenizer, not a shell parser. */
+/**
+ * Provider CLIs invoked in command position of any shell segment. Conservative: it is a tokenizer, not a shell parser.
+ * Known limitation: a `;` or `&` inside quotes still splits, so `echo "a; vercel"` is a false positive.
+ */
 export function invokedClis(command: string, clis: readonly string[]): string[] {
   const out: string[] = [];
-  for (const segment of command.split(/\|\||&&|[|;\n]/)) {
+  const add = (name: string) => { if (!out.includes(name)) out.push(name); };
+  for (const segment of command.split(/\|\||&&|\|&|\$\(|[|;&\n()`]/)) {
     const words = segment.trim().split(/\s+/).filter(Boolean);
     let i = 0;
-    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]!)) i++;        // env assignments
-    if (i < words.length && RUNNERS.has(words[i]!)) i++;
-    else if (i + 1 < words.length && DLX.has(words[i]!) && words[i + 1] === "dlx") i += 2;
-    while (i < words.length && words[i]!.startsWith("-")) i++;                          // runner flags like -y
+    // keywords, env assignments and wrappers can stack in any order
+    for (;;) {
+      const w = words[i];
+      if (w === undefined) break;
+      if (KEYWORDS.has(w) || ASSIGNMENT.test(w)) { i++; continue; }
+      if (WRAPPERS.has(w)) {
+        i++;
+        if (WRAPPERS_WITH_FLAGS.has(w)) {
+          while (i < words.length && words[i]!.startsWith("-")) i += w === "nice" && words[i] === "-n" ? 2 : 1;
+        }
+        continue;
+      }
+      break;
+    }
+    const skipFlags = () => {
+      while (i < words.length && words[i]!.startsWith("-")) {
+        i += words[i] === "-p" || words[i] === "--package" ? 2 : 1;
+      }
+    };
+    const first = words[i];
+    if (first === undefined) continue;
+    if (RUNNERS.has(first)) {
+      i++; skipFlags();
+    } else if (PKG_MANAGERS.has(first)) {
+      const next = words[i + 1];
+      if (next === "dlx" || (next === "exec" && first !== "bun") || (next === "x" && first === "bun")) { i += 2; skipFlags(); }
+      else if (first !== "npm" && next !== undefined && clis.includes(next)) i++;
+      else continue;
+    } else if (SHELLS.has(first.split("/").pop()!)) {
+      const c = words.indexOf("-c", i + 1);
+      if (c >= 0) for (const n of invokedClis(words.slice(c + 1).join(" ").replace(/^["']|["']$/g, ""), clis)) add(n);
+      continue;
+    }
     const head = words[i];
     if (!head) continue;
     const name = head.split("/").pop()!;
-    if (clis.includes(name) && !out.includes(name)) out.push(name);
+    if (clis.includes(name)) add(name);
   }
   return out;
 }
