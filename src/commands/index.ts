@@ -4,12 +4,13 @@ import { UserError } from "../core/errors.js";
 import { formatList, formatListJson } from "../core/format.js";
 import { sym, type Ui } from "../core/ui.js";
 
-import { type Registry, statusCmd, useProject } from "./project.js";
+import { type Registry, statusCmd, useProject, initCmd } from "./project.js";
 import { loadProject } from "../core/project.js";
 
 const COMMANDS: Array<[string, string, string]> = [
   ["add <provider> [name]", "Log into a new account and save it as a profile", ""],
   ["import <provider> <name>", "Save the account the CLI is currently logged into", ""],
+  ["init", "Write .acctx.json for this project (pick an account per provider)", "--from-active --shared --force"],
   ["status", "Check the project's .acctx.json against the active accounts", "--json"],
   ["use [provider] [name]", "Switch to a profile; with no args applies .acctx.json (or picker with --pick)", "--discard --pick"],
   ["list [provider]", "List saved profiles", "--json"],
@@ -59,6 +60,7 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "current": return current(ctx, reg);
     case "add": case "login": return add(ctx, reg);
     case "import": case "save": return importCmd(ctx, reg);
+    case "init": return initCmd(ctx, reg);
     case "status": return statusCmd(ctx, reg);
     case "use": case "switch": return use(ctx, reg);
     case "check": case "verify": return check(ctx, reg);
