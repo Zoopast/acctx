@@ -27,8 +27,8 @@ export async function entryStatus(store: Store, switcher: Switcher, provider: Pr
   const overrides = switcher.activeOverrides(provider);
   if (overrides.length) return { ...entry, state: "override", hint: `${overrides.join(", ")} is set; the ${provider.displayName} CLI will ignore the switched login. Unset it.` };
   const state = await store.readState();
-  const live = await switcher.liveExists(provider);
   if (state.active[provider.id] !== res.name) return { ...entry, state: "inactive", hint: "acctx use" };
+  const live = await switcher.liveExists(provider);
   if (!live) return { ...entry, state: "logged-out", hint: "acctx use" };
   if (provider.fingerprint) {
     const [lf, pf] = await Promise.all([switcher.liveFingerprint(provider), switcher.profileFingerprint(provider, res.name)]);

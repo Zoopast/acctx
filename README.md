@@ -131,6 +131,14 @@ and macOS Keychain paths unexercised, login flow not run). Each provider's `veri
 ## Install
 
 ```bash
+npm i -g acctx
+# or
+pnpm add -g acctx
+```
+
+From source:
+
+```bash
 pnpm install && pnpm build && pnpm link --global
 ```
 

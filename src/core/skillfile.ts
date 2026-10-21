@@ -39,9 +39,15 @@ export function mergeGuardHook(settingsText: string | null): { text: string; cha
     try { settings = JSON.parse(settingsText); } catch (e) { throw new UserError(`settings.json is not valid JSON: ${(e as Error).message}`, "Fix it by hand, then run the install again."); }
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new UserError("settings.json must be a JSON object.");
   }
-  const hooks = (settings["hooks"] && typeof settings["hooks"] === "object" ? settings["hooks"] : {}) as Record<string, unknown>;
-  const pre = Array.isArray(hooks["PreToolUse"]) ? (hooks["PreToolUse"] as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>) : [];
-  const present = pre.some((h) => (h.hooks ?? []).some((x) => x.command === "acctx guard"));
+  const shape = () => new UserError("settings.json hooks section has an unexpected shape; add the hook by hand.", 'Add {"matcher":"Bash","hooks":[{"type":"command","command":"acctx guard"}]} to hooks.PreToolUse.');
+  const rawHooks = settings["hooks"];
+  if (rawHooks !== undefined && (!rawHooks || typeof rawHooks !== "object" || Array.isArray(rawHooks))) throw shape();
+  const hooks = (rawHooks ?? {}) as Record<string, unknown>;
+  const rawPre = hooks["PreToolUse"];
+  if (rawPre !== undefined && !Array.isArray(rawPre)) throw shape();
+  const pre = (rawPre ?? []) as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
+  for (const h of pre) if (h && typeof h === "object" && h.hooks !== undefined && !Array.isArray(h.hooks)) throw shape();
+  const present = pre.some((h) => h && typeof h === "object" && (h.hooks ?? []).some((x) => x && x.command === "acctx guard"));
   if (present) return { text: settingsText ?? "", changed: false };
   const next = { ...settings, hooks: { ...hooks, PreToolUse: [...pre, GUARD_HOOK] } };
   return { text: JSON.stringify(next, null, 2) + "\n", changed: true };
