@@ -7,7 +7,8 @@
     "acctx": "./dist/src/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "engines": {
     "node": ">=22"
