@@ -211,7 +211,16 @@ async function add(ctx: Context, reg: Registry): Promise<number> {
   const p = reg.getProvider(need(ctx, 0, "provider"));
   const name = ctx.args[1];
   if (p.loginMode === "in-place") {
-    if (await ctx.switcher.liveExists(p)) ui.info(`Your current ${p.displayName} login is saved to its profile first; then ${p.displayName}'s own login starts in place.`);
+    const live = await ctx.switcher.liveExists(p);
+    const state = await ctx.store.readState();
+    const saved = Boolean(state.active[p.id] && (await ctx.store.hasProfile(p.id, state.active[p.id]!)));
+    if (live && saved) ui.info(`Your current ${p.displayName} login is saved to its profile first; then ${p.displayName}'s own login starts in place.`);
+    else if (live && !ctx.flags["discard"]) {
+      throw new UserError(
+        `Your current ${p.displayName} login is not saved in any profile, and ${p.displayName} can only log in by replacing it.`,
+        `Keep it:     acctx import ${p.id} <name>   (then acctx add ${p.id} ${name ?? "<name>"})\nReplace it:  acctx add ${p.id} ${name ?? "<name>"} --discard`,
+      );
+    } else if (live) ui.warn(`Replacing the current unsaved ${p.displayName} login (--discard).`);
   } else {
     ui.info(`Starting ${p.displayName}'s login in an isolated directory; your current login is untouched.`);
   }
@@ -314,8 +323,12 @@ async function remove(ctx: Context, reg: Registry): Promise<number> {
     const ok = await ui.confirm(`Delete the saved login ${p.id}/${name}?`);
     if (!ok) { ui.info("Cancelled."); return 0; }
   }
+  const wasActive = state.active[p.id] === name;
   await ctx.store.removeProfile(p.id, name);
   ui.success(`Removed ${p.id}/${name}.`);
   ui.hint("The token was deleted locally, not revoked; run the provider's logout if you want revocation.");
+  if (wasActive && (await ctx.switcher.liveExists(p))) {
+    ui.hint(`The ${p.displayName} CLI is still logged in, but that login is no longer saved. Save it again with: acctx import ${p.id} <name>`);
+  }
   return 0;
 }
