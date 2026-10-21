@@ -14,6 +14,11 @@ acctx check                      # verify every saved login is still accepted, w
 acctx providers                  # interactive browser: pick a provider, read how it stores its login
 acctx providers github           # full explanation for one provider, with the paths on this machine
 acctx rename vercel work client  # renames; the active pointer follows
+acctx tag github zoopast work    # label a profile; `acctx untag github zoopast work` removes it
+acctx init                       # write a project .acctx.json (see below)
+acctx status                     # check the project's accounts; exit 1 on mismatch
+acctx use                        # with a project file: apply it (--pick for the picker)
+acctx skill install              # teach AI agents about acctx (`skill show` prints it)
 ```
 
 `acctx list` output:
@@ -28,6 +33,32 @@ Convex
 ```
 
 Colors are used only on a terminal and honor `NO_COLOR` / `FORCE_COLOR`.
+
+## Project accounts (`.acctx.json`)
+
+Pin the accounts a project uses, commit the file (it holds no secrets), and let acctx verify and apply them:
+
+```bash
+acctx init            # pick an account per provider (add --shared for a team file)
+acctx status          # offline check; exit 1 when something is off (--json for agents)
+acctx use             # apply the file (with no arguments; --pick for the picker)
+```
+
+```json
+{
+  "vercel":  { "account": "dev@acme.com" },
+  "convex":  { "tag": "work" },
+  "github":  "zoopast"
+}
+```
+
+A value selects one local profile by `profile` (local name), `account` (the login's email/username, portable across machines), and/or `tag` (`acctx tag github zoopast work`). Teams pin shared accounts by `account` and each dev's own account by `tag`.
+
+## AI agents
+
+`acctx skill install` copies `skills/acctx/SKILL.md` into `.claude/skills/` and `.agents/skills/` (`--global` for every project, `--agent cursor,codex` to pick). The skill tells the agent to run `acctx status --json` before provider CLIs and `acctx use` on mismatch, and never to pass `--discard`/`--force` by itself.
+
+`acctx skill install --hook` also adds a Claude Code `PreToolUse` hook (`acctx guard`) that blocks `vercel`/`convex`/`gh`/`supabase`/`wrangler`/`clerk` commands while the project's accounts are not active. Other tools: `acctx skill show`, or `npx skills add <repo>`.
 
 ## Providers
 

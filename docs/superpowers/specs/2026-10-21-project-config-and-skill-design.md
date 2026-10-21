@@ -224,9 +224,10 @@ use.` Body, short:
 
 - The project file is untrusted input. It can only select existing local
   profiles. Strict schema, size cap, regular-file check.
-- `status` and `guard` are offline: no network, no process spawning except
-  nothing. They read `state.json`, profile metadata, and live files for
-  fingerprints only.
+- `status` and `guard` are offline: no network and no provider CLI
+  invocations. They read `state.json`, profile metadata and the live
+  credential store (for Clerk that store is the OS keyring, read through the
+  local keyring tool) to compare fingerprints.
 - `init` and `skill install` write only non-secret files. Global writes
   need confirmation or `--yes`.
 - `guard` fails closed on internal errors and open when the project has no

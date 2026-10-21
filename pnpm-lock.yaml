@@ -10,10 +10,6 @@ overrides:
 importers:
 
   .:
-    dependencies:
-      account-switcher:
-        specifier: 'link:'
-        version: 'link:'
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
