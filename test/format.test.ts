@@ -45,6 +45,7 @@ test("relativeTime and shortId", () => {
   assert.equal(relativeTime(undefined, now), "");
   assert.equal(shortId("team_Ab12Cd34Ef56Gh78Ij90Kl12"), "team_Ab12Cd…Kl12");
   assert.equal(shortId("short"), "short");
+  assert.equal(shortId("Octocat Example's team, Acmeinc"), "Octocat Example's team, Acmeinc");
 });
 
 test("formatListJson is machine readable", () => {
