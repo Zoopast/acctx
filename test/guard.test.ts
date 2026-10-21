@@ -17,6 +17,14 @@ test("invokedClis finds provider CLIs only in command position", () => {
   assert.deepEqual(invokedClis("cd app && VERCEL_ORG_ID=x vercel pull", CLIS), ["vercel"]);
   assert.deepEqual(invokedClis("/usr/local/bin/vercel ls", CLIS), ["vercel"]);
   assert.deepEqual(invokedClis("", CLIS), []);
+  for (const [cmd, want] of [
+    ["sudo vercel deploy", ["vercel"]], ["time vercel ls", ["vercel"]], ["env FOO=1 vercel ls", ["vercel"]], ["nohup vercel dev &", ["vercel"]],
+    ["pnpm exec vercel ls", ["vercel"]], ["npm exec -- convex dev", ["convex"]], ["yarn wrangler whoami", ["wrangler"]], ["pnpm vercel ls", ["vercel"]],
+    ["npx -y vercel ls", ["vercel"]], ["npx -p vercel vercel ls", ["vercel"]],
+    ["if true; then vercel ls; fi", ["vercel"]], ["echo $(gh api user)", ["gh"]], ["(vercel ls)", ["vercel"]], ["sleep 1 & vercel ls", ["vercel"]],
+    ['bash -c "vercel ls"', ["vercel"]],
+    ["echo vercel", []], ['git commit -m "vercel fix"', []], ["pnpm install vercel", []], ["ls | grep vercel", []],
+  ] as const) assert.deepEqual(invokedClis(cmd, CLIS), want, cmd);
 });
 
 test("parseHookPayload tolerates garbage", () => {
