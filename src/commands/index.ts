@@ -84,7 +84,7 @@ async function providersCmd(ctx: Context, reg: Registry): Promise<number> {
   }
   if (ctx.args[0]) {
     const p = reg.getProvider(ctx.args[0]);
-    const live = ctx.switcher.liveExists(p);
+    const live = await ctx.switcher.liveExists(p);
     const state = await ctx.store.readState();
     ui.out(`${s.bold(p.displayName)} ${s.dim(`(${p.id})`)}`);
     ui.out(`  ${p.storage.summary}`);
@@ -92,7 +92,7 @@ async function providersCmd(ctx: Context, reg: Registry): Promise<number> {
     ui.out(s.bold("  Stored at"));
     ui.out(`    ${s.dim(p.storage.location)}`);
     for (const f of p.files(ctx.switcher.env)) {
-      ui.out(`    ${f.path}  ${s.dim(f.required ? "required" : "optional")}`);
+      ui.out(`    ${f.path}  ${s.dim((f.required ? "required" : "optional") + (f.virtual ? ", not a file" : ""))}`);
     }
     ui.out("");
     ui.out(s.bold("  Login") + `   ${p.storage.login}`);
@@ -112,7 +112,7 @@ async function providersCmd(ctx: Context, reg: Registry): Promise<number> {
   }
   const w = Math.max(...reg.providers.map((p) => p.id.length));
   for (const p of reg.providers) {
-    const live = ctx.switcher.liveExists(p) ? s.green(sym.active) : s.dim("○");
+    const live = (await ctx.switcher.liveExists(p)) ? s.green(sym.active) : s.dim("○");
     ui.out(`${live} ${s.cyan(p.id.padEnd(w))}  ${p.displayName.padEnd(22)} ${s.dim(p.loginMode.padEnd(9))} ${s.dim(p.storage.location)}`);
   }
   ui.out("");
@@ -125,7 +125,10 @@ async function list(ctx: Context, reg: Registry): Promise<number> {
   const profiles = await ctx.store.listProfiles(provider);
   const state = await ctx.store.readState();
   if (ctx.flags["json"]) { ctx.ui.out(formatListJson(profiles, state.active)); return 0; }
-  const shown = provider ? reg.providers.filter((p) => p.id === provider) : reg.providers.filter((p) => profiles.some((x) => x.provider === p.id) || ctx.switcher.liveExists(p));
+  const shown: Provider[] = [];
+  for (const p of reg.providers) {
+    if (provider ? p.id === provider : profiles.some((x) => x.provider === p.id) || (await ctx.switcher.liveExists(p))) shown.push(p);
+  }
   if (shown.length === 0) {
     ctx.ui.out(ctx.ui.s.dim("No profiles yet. Start with: acctx import <provider> <name>, or acctx add <provider> <name>"));
     return 0;
@@ -142,7 +145,7 @@ async function current(ctx: Context, reg: Registry): Promise<number> {
   for (const id of ids) {
     const name = state.active[id];
     const p = reg.getProvider(id);
-    const live = ctx.switcher.liveExists(p);
+    const live = await ctx.switcher.liveExists(p);
     let status: string;
     if (name) status = live ? `${s.green(sym.active)} ${s.bold(name)}` : `${s.red(sym.fail)} ${name} ${s.dim("(live credentials missing; run: acctx use " + id + " " + name + ")")}`;
     else status = live ? `${s.yellow(sym.warn)} ${s.yellow("logged in, not saved")} ${s.dim("→ acctx import " + id + " <name>")}` : s.dim("not logged in");
@@ -157,7 +160,7 @@ async function add(ctx: Context, reg: Registry): Promise<number> {
   const p = reg.getProvider(need(ctx, 0, "provider"));
   const name = ctx.args[1];
   if (p.loginMode === "in-place") {
-    if (ctx.switcher.liveExists(p)) ui.info(`Your current ${p.displayName} login is saved to its profile first; then ${p.displayName}'s own login starts in place.`);
+    if (await ctx.switcher.liveExists(p)) ui.info(`Your current ${p.displayName} login is saved to its profile first; then ${p.displayName}'s own login starts in place.`);
   } else {
     ui.info(`Starting ${p.displayName}'s login in an isolated directory; your current login is untouched.`);
   }
@@ -200,7 +203,7 @@ async function use(ctx: Context, reg: Registry): Promise<number> {
   }
   const p = reg.getProvider(providerId);
   const state = await ctx.store.readState();
-  if (state.active[p.id] === name && ctx.switcher.liveExists(p)) {
+  if (state.active[p.id] === name && (await ctx.switcher.liveExists(p))) {
     ui.info(`${p.id}/${name} is already active.`);
     warnOverrides(ctx, p);
     return 0;

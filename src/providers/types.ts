@@ -1,4 +1,5 @@
 import type { Env } from "../core/env.js";
+import type { LiveStore } from "../core/livestore.js";
 
 export interface CredentialFile {
   /** File name inside the profile dir, e.g. "auth.json". */
@@ -9,6 +10,8 @@ export interface CredentialFile {
   required: boolean;
   /** Permission bits to apply when writing (live and stored copies). */
   mode: number;
+  /** True when `path` is descriptive only (e.g. a keyring entry) and the provider's liveStore handles it. */
+  virtual?: boolean;
 }
 
 export interface Identity {
@@ -50,6 +53,8 @@ export interface Provider {
    * relative path under that root so the core can stage a native layout.
    */
   layout?: Record<string, string>;
+  /** Custom live credential store (keyring, etc.). Default: the files above. */
+  liveStore?(env: Env): LiveStore;
   /**
    * isolated: a new login can be made into a scratch dir without touching live files.
    * in-place: the provider's CLI only logs into the live location; acctx stashes first.

@@ -227,6 +227,22 @@ with `ACCTX_DEBUG=1`, after redaction).
   styled help, arrow-key picker for `use` (numbered fallback, Esc cancels,
   Ctrl-C exits 130), and a confirmation on interactive `remove`.
 
+### Non-file credential stores (Clerk)
+
+The Clerk CLI stores its OAuth session through `@napi-rs/keyring` (service
+`clerk-cli`, account `oauth-access-token`) and writes a `credentials` file only
+when no keyring is usable. On this WSL2 machine that is the Linux kernel
+keyring (`keyctl` entry `keyring:oauth-access-token@clerk-cli`). The core now
+talks to a `LiveStore` (`exists/read/write` over flat entry names) instead of
+copying paths directly; `FileLiveStore` wraps `files()` for every other
+provider, and Clerk supplies a store that mirrors the library's backend order
+(secret-service → keyutils → file on Linux, Keychain → file on macOS). Profile
+entries stay flat files (`session.json`, `config.json`), so verify/identify,
+fingerprints and staging work unchanged. Identity uses Clerk's OAuth userinfo
+endpoint with the public client id compiled into the CLI, refreshing an expired
+access token first and writing the new session back. Login is in place: the
+keyring cannot be isolated with a directory flag.
+
 ## Out of scope (v1)
 
 OS keyring backend, team switching inside one account (`vercel switch` already
