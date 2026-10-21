@@ -32,6 +32,7 @@ export async function statusCmd(ctx: Context, reg: Registry): Promise<number> {
 
 export async function useProject(ctx: Context, reg: Registry, project: ProjectConfig): Promise<number> {
   const { ui } = ctx;
+  if (project.entries.length === 0) throw new UserError(`${project.file} lists no providers.`, "Run: acctx init --force");
   const entries = await projectStatus(ctx.store, ctx.switcher, reg, project);
   const state = await ctx.store.readState();
   const todo = entries.filter((e) => e.state === "inactive" || e.state === "logged-out");
