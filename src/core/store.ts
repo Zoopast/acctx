@@ -13,6 +13,8 @@ export interface ProfileMeta {
   updatedAt: string;
   /** Last time this profile was switched to (or imported/added). */
   lastUsedAt?: string;
+  /** Local, non-secret labels used by .acctx.json `tag` selectors. Sorted, unique. */
+  tags?: string[];
 }
 
 export interface State {
@@ -27,6 +29,12 @@ export function assertProfileName(name: string): void {
       `Invalid profile name "${name}".`,
       "Use letters, digits, dots, dashes or underscores (max 64 chars).",
     );
+  }
+}
+
+export function assertTagName(tag: string): void {
+  if (!NAME_RE.test(tag)) {
+    throw new UserError(`Invalid tag "${tag}".`, "Use letters, digits, dots, dashes or underscores (max 64 chars).");
   }
 }
 
@@ -69,6 +77,31 @@ export class Store {
     await ensureDir(path.dirname(dir), 0o700);
     await ensureDir(dir, 0o700);
     await writeAtomic(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2) + "\n", 0o600);
+  }
+
+  private async requireMeta(provider: string, name: string): Promise<ProfileMeta> {
+    const meta = await this.readMeta(provider, name);
+    if (!meta) throw new UserError(`No ${provider} profile named "${name}".`);
+    return meta;
+  }
+
+  /** Adds tags (idempotent). Returns the resulting sorted tag list. */
+  async addTags(provider: string, name: string, tags: string[]): Promise<string[]> {
+    for (const t of tags) assertTagName(t);
+    const meta = await this.requireMeta(provider, name);
+    const next = [...new Set([...(meta.tags ?? []), ...tags.map((t) => t.toLowerCase())])].sort();
+    await this.writeMeta(provider, name, { ...meta, tags: next, updatedAt: new Date().toISOString() });
+    return next;
+  }
+
+  /** Removes tags that are present; unknown tags are ignored. Returns the resulting sorted tag list. */
+  async removeTags(provider: string, name: string, tags: string[]): Promise<string[]> {
+    const meta = await this.requireMeta(provider, name);
+    const drop = new Set(tags.map((t) => t.toLowerCase()));
+    const next = (meta.tags ?? []).filter((t) => !drop.has(t));
+    const { tags: _old, ...rest } = meta;
+    await this.writeMeta(provider, name, { ...rest, ...(next.length ? { tags: next } : {}), updatedAt: new Date().toISOString() });
+    return next;
   }
 
   async removeProfile(provider: string, name: string): Promise<void> {

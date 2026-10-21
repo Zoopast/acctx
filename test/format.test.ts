@@ -55,3 +55,10 @@ test("formatListJson is machine readable", () => {
   assert.equal(j[1].lastUsedAt, null);
   assert.equal(j[0].details.team, "team_jBOk3W6v1yEoFzTXMZa7VzaJ");
 });
+
+test("list shows tags dimmed and in json", () => {
+  const rows = [{ provider: "vercel", name: "work", meta: { label: "me@acme.com", identity: { label: "me@acme.com" }, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", tags: ["team", "work"] } }];
+  const text = formatList(rows, {}, { color: false, now: new Date("2026-01-01T00:00:00Z") });
+  assert.match(text, /work\s+me@acme\.com\s+#team #work/);
+  assert.deepEqual(JSON.parse(formatListJson(rows, {}))[0].tags, ["team", "work"]);
+});

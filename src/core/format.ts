@@ -77,12 +77,14 @@ export function formatList(rows: ListRow[], active: Record<string, string>, opts
       active: active[id] === r.name,
       name: r.name,
       label: r.meta.label === r.name ? "" : r.meta.label,
+      tags: (r.meta.tags ?? []).map((t) => "#" + t).join(" "),
       details: detailsOf(r.meta),
       used: relativeTime(r.meta.lastUsedAt ?? r.meta.updatedAt, now),
     }));
     const w = {
       name: Math.max(...table.map((t) => t.name.length)),
       label: Math.max(...table.map((t) => t.label.length)),
+      tags: Math.max(...table.map((t) => t.tags.length)),
       details: Math.max(...table.map((t) => t.details.length)),
     };
     for (const t of table) {
@@ -90,6 +92,7 @@ export function formatList(rows: ListRow[], active: Record<string, string>, opts
       const name = t.active ? c.bold(c.green(t.name.padEnd(w.name))) : t.name.padEnd(w.name);
       const cells = [name];
       if (w.label) cells.push(c.cyan(t.label.padEnd(w.label)));
+      if (w.tags) cells.push(c.dim(t.tags.padEnd(w.tags)));
       if (w.details) cells.push(c.dim(t.details.padEnd(w.details)));
       if (t.used) cells.push(c.dim(t.active ? "active · " + t.used : t.used));
       out.push(`  ${marker} ${cells.join("  ").replace(/\s+$/, "")}`);
@@ -108,6 +111,7 @@ export function formatListJson(rows: ListRow[], active: Record<string, string>):
       active: active[r.provider] === r.name,
       label: r.meta.label,
       details: r.meta.identity?.details ?? {},
+      tags: r.meta.tags ?? [],
       createdAt: r.meta.createdAt,
       updatedAt: r.meta.updatedAt,
       lastUsedAt: r.meta.lastUsedAt ?? null,

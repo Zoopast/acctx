@@ -14,6 +14,8 @@ const COMMANDS: Array<[string, string, string]> = [
   ["current [provider]", "Show the active profile(s)", ""],
   ["check [provider] [name]", "Verify saved logins are still valid, without switching", ""],
   ["rename <provider> <old> <new>", "Rename a saved profile", ""],
+  ["tag <provider> <name> <tag...>", "Attach local tags to a profile (used by .acctx.json)", ""],
+  ["untag <provider> <name> <tag...>", "Remove tags from a profile", ""],
   ["remove <provider> <name>", "Delete a saved profile (asks; --force to skip, required when piped)", "--force"],
   ["providers [id]", "Browse providers: state, storage, profiles (interactive on a TTY)", "--json"],
 ];
@@ -58,6 +60,8 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "use": case "switch": return use(ctx, reg);
     case "check": case "verify": return check(ctx, reg);
     case "rename": case "mv": return rename(ctx, reg);
+    case "tag": return tag(ctx, reg, true);
+    case "untag": return tag(ctx, reg, false);
     case "remove": case "rm": return remove(ctx, reg);
     default:
       throw new UserError(`Unknown command "${cmd}".`, "Run `acctx --help` for usage.");
@@ -305,6 +309,16 @@ async function rename(ctx: Context, reg: Registry): Promise<number> {
   const to = need(ctx, 2, "new profile name");
   await ctx.store.renameProfile(p.id, from, to);
   ctx.ui.success(`Renamed ${p.id}/${from} ${sym.arrow} ${ctx.ui.s.bold(`${p.id}/${to}`)}`);
+  return 0;
+}
+
+async function tag(ctx: Context, reg: Registry, add: boolean): Promise<number> {
+  const p = reg.getProvider(need(ctx, 0, "provider"));
+  const name = need(ctx, 1, "profile name");
+  const tags = ctx.args.slice(2);
+  if (tags.length === 0) throw new UserError("Missing tag.", `Usage: acctx ${add ? "tag" : "untag"} ${p.id} ${name} <tag...>`);
+  const result = add ? await ctx.store.addTags(p.id, name, tags) : await ctx.store.removeTags(p.id, name, tags);
+  ctx.ui.success(`${p.id}/${name} tags: ${result.length ? result.map((t) => "#" + t).join(" ") : ctx.ui.s.dim("none")}`);
   return 0;
 }
 
