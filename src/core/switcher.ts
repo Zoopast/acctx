@@ -20,6 +20,26 @@ export class Switcher {
     return provider.files(this.env).some((f) => f.required && exists(f.path));
   }
 
+  private async fingerprintOf(provider: Provider, pathFor: (name: string) => string): Promise<string | null> {
+    if (!provider.fingerprint) return null;
+    const paths: Record<string, string> = {};
+    for (const f of provider.files(this.env)) {
+      const p = pathFor(f.name);
+      if (exists(p)) paths[f.name] = p;
+    }
+    return provider.fingerprint(paths);
+  }
+
+  liveFingerprint(provider: Provider): Promise<string | null> {
+    const byName = new Map(provider.files(this.env).map((f) => [f.name, f.path]));
+    return this.fingerprintOf(provider, (n) => byName.get(n) ?? "");
+  }
+
+  profileFingerprint(provider: Provider, name: string): Promise<string | null> {
+    const dir = this.store.profileDir(provider.id, name);
+    return this.fingerprintOf(provider, (n) => path.join(dir, n));
+  }
+
   /** Copy live credential files into a profile dir. Returns false if nothing live. */
   async captureLive(provider: Provider, name: string): Promise<boolean> {
     if (!this.liveExists(provider)) return false;
@@ -62,9 +82,25 @@ export class Switcher {
     const state = await this.store.readState();
     const active = state.active[provider.id];
     if (active && (await this.store.hasProfile(provider.id, active))) {
-      await this.captureLive(provider, active);
       const meta = await this.store.readMeta(provider.id, active);
-      if (meta) await this.store.writeMeta(provider.id, active, { ...meta, updatedAt: new Date().toISOString() });
+      const live = await this.liveFingerprint(provider);
+      const saved = meta?.fingerprint ?? (await this.profileFingerprint(provider, active));
+      if (live && saved && live !== saved) {
+        // Someone logged in outside acctx: the live login is a different
+        // account than the active profile. Never overwrite the profile with it.
+        if (!opts.discard) {
+          throw new UserError(
+            `Your current ${provider.displayName} login is a different account than the active profile "${active}".`,
+            `It was probably changed outside acctx. Save it with: acctx import ${provider.id} <name>\n  Or overwrite it with: --discard`,
+          );
+        }
+        return;
+      }
+      await this.captureLive(provider, active);
+      if (meta) {
+        const fp = live ?? meta.fingerprint;
+        await this.store.writeMeta(provider.id, active, { ...meta, ...(fp ? { fingerprint: fp } : {}), updatedAt: new Date().toISOString() });
+      }
       return;
     }
     if (!opts.discard) {
@@ -131,6 +167,9 @@ export class Switcher {
     }
     // in-place: stash current login, log in fresh, capture.
     if (!provider.loginInPlace) throw new Error(`${provider.id}: in-place login not implemented`);
+    if (name === undefined) {
+      throw new UserError(`A profile name is required for ${provider.displayName}.`, `Example: acctx add ${provider.id} work`);
+    }
     await this.stashLive(provider, opts);
     for (const f of provider.files(this.env)) await removeIfExists(f.path);
     await provider.loginInPlace(this.env);
@@ -138,24 +177,18 @@ export class Switcher {
       throw new UserError(`${provider.displayName} login did not complete; nothing saved.`,
         `Your previous login is still saved. Restore it with: acctx use ${provider.id} <name>`);
     }
-    const tmpName = name ?? `_pending_${Date.now()}`;
-    await this.captureLive(provider, tmpName);
-    const identity = await provider.identify(this.store.profileDir(provider.id, tmpName), this.env);
-    const finalName = await this.pickName(provider, name, identity, tmpName);
-    if (finalName !== tmpName) {
-      await fs.rename(this.store.profileDir(provider.id, tmpName), this.store.profileDir(provider.id, finalName));
-    }
-    const meta = await this.finalizeProfile(provider, finalName, identity);
-    await this.applyProfile(provider, finalName);
-    await this.store.setActive(provider.id, finalName);
-    return { name: finalName, meta };
+    await this.captureLive(provider, name);
+    const meta = await this.finalizeProfile(provider, name);
+    await this.applyProfile(provider, name);
+    await this.store.setActive(provider.id, name);
+    return { name, meta };
   }
 
-  private async pickName(provider: Provider, requested: string | undefined, identity: Identity | null, ignore?: string): Promise<string> {
+  private async pickName(provider: Provider, requested: string | undefined, identity: Identity | null): Promise<string> {
     if (requested) return requested;
     const base = (identity?.label ?? "account").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "account";
     let candidate = base;
-    for (let i = 2; (await this.store.hasProfile(provider.id, candidate)) && candidate !== ignore; i++) candidate = `${base}-${i}`;
+    for (let i = 2; await this.store.hasProfile(provider.id, candidate); i++) candidate = `${base}-${i}`;
     return candidate;
   }
 
@@ -164,8 +197,10 @@ export class Switcher {
     const id = identity === undefined ? await provider.identify(dir, this.env) : identity;
     const now = new Date().toISOString();
     const existing = await this.store.readMeta(provider.id, name);
+    const fp = await this.profileFingerprint(provider, name);
     const meta: ProfileMeta = {
       label: id?.label ?? name,
+      ...(fp ? { fingerprint: fp } : {}),
       identity: id,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,

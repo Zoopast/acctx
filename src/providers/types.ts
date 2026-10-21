@@ -34,6 +34,13 @@ export interface Provider {
   loginIsolated?(dir: string, env: Env): Promise<void>;
   loginInPlace?(env: Env): Promise<void>;
   /**
+   * Offline identity fingerprint (e.g. a user id) read from credential files
+   * without any network call. `paths` maps file name to absolute path. Used to
+   * detect that the live login no longer belongs to the active profile.
+   * Return null when the provider has no safe non-secret identifier.
+   */
+  fingerprint?(paths: Record<string, string>): Promise<string | null>;
+  /**
    * Label for the credentials stored in `dir` (profile dir layout). May refresh
    * the credential files in `dir` as a side effect; after this call `dir` is
    * the authoritative copy and the core re-syncs it to the live location.

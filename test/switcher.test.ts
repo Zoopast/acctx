@@ -139,3 +139,27 @@ test("import re-syncs the profile to live after identify rotates the stored copy
   await new Switcher(store, env).importLive(p, "alice");
   assert.equal((await readLive(home)).token, "rotated");
 });
+
+test("use refuses to capture a foreign live login into the active profile (fingerprint mismatch)", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const sw = new Switcher(store, env);
+  await writeLive(home, { token: "a", user: "alice" });
+  await sw.importLive(p, "alice");
+  await writeLive(home, { token: "b", user: "bob" });
+  await sw.importLive(p, "bob");
+  // user logs in as someone else outside acctx while "bob" is marked active
+  await writeLive(home, { token: "zed-token", user: "zed" });
+  await assert.rejects(sw.use(p, "alice"), (e: unknown) => e instanceof UserError && /different account/.test(e.message));
+  const bobSaved = JSON.parse(await fs.readFile(path.join(store.profileDir("fake", "bob"), "auth.json"), "utf8"));
+  assert.equal(bobSaved.token, "b", "bob's profile must not be overwritten by zed's login");
+  await sw.use(p, "alice", { discard: true });
+  assert.equal((await readLive(home)).token, "a");
+  assert.equal(bobSaved.token, "b");
+});
+
+test("add (in-place) requires a name", async () => {
+  const { store, env } = await setup();
+  const p = fakeProvider({ loginMode: "in-place" });
+  await assert.rejects(new Switcher(store, env).add(p, undefined), (e: unknown) => e instanceof UserError && /name is required/.test(e.message));
+});

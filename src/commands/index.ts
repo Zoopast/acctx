@@ -85,10 +85,7 @@ async function current(ctx: Context, reg: Registry): Promise<number> {
 
 async function add(ctx: Context, reg: Registry): Promise<number> {
   const p = reg.getProvider(need(ctx, 0, "provider"));
-  let name = ctx.args[1];
-  if (!name && !p.loginMode.startsWith("isolated") && !ctx.interactive) {
-    throw new UserError(`A profile name is required for ${p.displayName}.`, `Example: acctx add ${p.id} work`);
-  }
+  const name = ctx.args[1];
   if (p.loginMode === "in-place") ctx.err(`Your current ${p.displayName} login will be saved to its profile, then ${p.displayName}'s own login flow starts.`);
   else ctx.err(`Starting ${p.displayName}'s login flow in an isolated directory; your current login is untouched.`);
   const res = await ctx.switcher.add(p, name, { discard: Boolean(ctx.flags["discard"]) });
