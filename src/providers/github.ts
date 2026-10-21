@@ -20,6 +20,7 @@ export const github: Provider = {
   id: "github",
   displayName: "GitHub",
   installHint: "https://cli.github.com (gh)",
+  cli: "gh",
   loginMode: "isolated",
   storage: {
     summary: "gh keeps OAuth tokens per host in hosts.yml; config.yml holds only preferences and is left alone.",

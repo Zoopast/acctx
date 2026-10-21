@@ -12,6 +12,7 @@ export const vercel: Provider = {
   id: "vercel",
   displayName: "Vercel",
   installHint: "npm i -g vercel@latest",
+  cli: "vercel",
   loginMode: "isolated",
   storage: {
     summary: "The Vercel CLI keeps an OAuth access token, refresh token and expiry in auth.json, and the selected team in config.json.",

@@ -7,6 +7,7 @@ import { sym, type Ui } from "../core/ui.js";
 import { type Registry, statusCmd, useProject, initCmd } from "./project.js";
 import { loadProject } from "../core/project.js";
 import { installSkill, skillCmd } from "./skill.js";
+import { guardCmd } from "./guard.js";
 
 const COMMANDS: Array<[string, string, string]> = [
   ["add <provider> [name]", "Log into a new account and save it as a profile", ""],
@@ -51,6 +52,7 @@ export function helpText(ui: Ui): string {
     "",
     s.dim("Profiles are copies of each CLI's own credential files, stored with 0600 permissions."),
     s.dim("acctx never prints tokens. Run `acctx providers <id>` to see exactly what is stored."),
+    s.dim("acctx guard is the Claude Code hook installed by: acctx skill install --hook"),
   ];
   return lines.join("\n");
 }
@@ -65,6 +67,7 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "import": case "save": return importCmd(ctx, reg);
     case "init": return initCmd(ctx, reg, (scope) => installSkill(ctx, scope));
     case "skill": return skillCmd(ctx);
+    case "guard": return guardCmd(ctx, reg, readStdinText);
     case "status": return statusCmd(ctx, reg);
     case "use": case "switch": return use(ctx, reg);
     case "check": case "verify": return check(ctx, reg);
@@ -358,4 +361,10 @@ async function remove(ctx: Context, reg: Registry): Promise<number> {
     ui.hint(`The ${p.displayName} CLI is still logged in, but that login is no longer saved. Save it again with: acctx import ${p.id} <name>`);
   }
   return 0;
+}
+
+async function readStdinText(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks).toString("utf8");
 }

@@ -45,6 +45,8 @@ export interface Provider {
   displayName: string;
   /** One-line install hint shown when the provider CLI is missing. */
   installHint: string;
+  /** Executable name of the provider's CLI, used by the guard hook. */
+  cli: string;
   storage: StorageInfo;
   files(env: Env): CredentialFile[];
   /**

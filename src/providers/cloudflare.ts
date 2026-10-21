@@ -30,6 +30,7 @@ export const cloudflare: Provider = {
   id: "cloudflare",
   displayName: "Cloudflare (wrangler)",
   installHint: "npm i -g wrangler",
+  cli: "wrangler",
   loginMode: "isolated",
   layout: LAYOUT,
   storage: {
