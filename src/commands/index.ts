@@ -6,11 +6,14 @@ import { sym, type Ui } from "../core/ui.js";
 
 import { type Registry, statusCmd, useProject, initCmd } from "./project.js";
 import { loadProject } from "../core/project.js";
+import { installSkill, skillCmd } from "./skill.js";
 
 const COMMANDS: Array<[string, string, string]> = [
   ["add <provider> [name]", "Log into a new account and save it as a profile", ""],
   ["import <provider> <name>", "Save the account the CLI is currently logged into", ""],
   ["init", "Write .acctx.json for this project (pick an account per provider)", "--from-active --shared --force"],
+  ["skill install", "Install the acctx skill for AI agents (project; --global for all projects)", "--global --agent --hook --force"],
+  ["skill show", "Print the skill text for any agent", ""],
   ["status", "Check the project's .acctx.json against the active accounts", "--json"],
   ["use [provider] [name]", "Switch to a profile; with no args applies .acctx.json (or picker with --pick)", "--discard --pick"],
   ["list [provider]", "List saved profiles", "--json"],
@@ -60,7 +63,8 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "current": return current(ctx, reg);
     case "add": case "login": return add(ctx, reg);
     case "import": case "save": return importCmd(ctx, reg);
-    case "init": return initCmd(ctx, reg);
+    case "init": return initCmd(ctx, reg, (scope) => installSkill(ctx, scope));
+    case "skill": return skillCmd(ctx);
     case "status": return statusCmd(ctx, reg);
     case "use": case "switch": return use(ctx, reg);
     case "check": case "verify": return check(ctx, reg);
