@@ -11,7 +11,7 @@ acctx use vercel work            # switch — `vercel whoami` now reports "work"
 acctx use                        # interactive picker
 acctx list                       # grouped by provider; --json for scripts
 acctx check                      # verify every saved login is still accepted, without switching
-acctx providers                  # what each provider stores, where, and how acctx handles it
+acctx providers                  # interactive browser: pick a provider, read how it stores its login
 acctx providers github           # full explanation for one provider, with the paths on this machine
 acctx rename vercel work client  # renames; the active pointer follows
 ```
@@ -40,6 +40,9 @@ Colors are used only on a terminal and honor `NO_COLOR` / `FORCE_COLOR`.
 | `cloudflare` | `$XDG_CONFIG_HOME/.wrangler/config/default.toml` | isolated (`XDG_CONFIG_HOME`) | `wrangler whoami` on a staged copy |
 | `clerk` | OS keyring entry `clerk-cli/oauth-access-token` (+ `config.json`) | in place (`clerk auth login`) | Clerk OAuth userinfo, refreshing expired sessions; offline `userId` fingerprint |
 
+On a terminal `acctx providers` opens an arrow-key list showing each
+provider's state (logged in, active profile, profile count, env overrides);
+Enter opens the detail, Esc goes back. When piped it prints a table.
 `acctx providers <id>` prints the full explanation: the exact files, how a new
 login is obtained, how identity is checked, which environment variables make
 the CLI ignore the file (acctx warns when one is set), caveats such as OS
