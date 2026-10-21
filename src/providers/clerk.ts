@@ -64,7 +64,8 @@ class ClerkStore implements LiveStore {
       case "keyutils": {
         const id = await this.findKey();
         if (!id) return null;
-        const r = await this.run("keyctl", ["print", id]);
+        // `pipe` returns the raw bytes; `print` would hex-encode anything with a newline.
+        const r = await this.run("keyctl", ["pipe", id]);
         return r.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
       }
       case "macos": {
@@ -129,8 +130,12 @@ class ClerkStore implements LiveStore {
     return null;
   }
 
+  /** The stored session, only if it parses as one; garbage is treated as "not logged in". */
   async readSession(): Promise<string | null> {
-    for (const b of this.backends()) { const v = await this.readFrom(b); if (v) return v; }
+    for (const b of this.backends()) {
+      const v = await this.readFrom(b);
+      if (v && parseSession(v)) return v;
+    }
     return null;
   }
 
@@ -220,6 +225,11 @@ export const clerk: Provider = {
     ];
   },
   liveStore: (env) => new ClerkStore(env),
+
+  async validateFiles(dir) {
+    const text = await fs.readFile(path.join(dir, "session.json"), "utf8").catch(() => "");
+    return parseSession(text) ? null : "session.json is not a Clerk session (accessToken/refreshToken missing).";
+  },
 
   async loginInPlace(env) {
     const res = await env.run("clerk", ["auth", "login"], { stdio: "inherit", env: withoutOverrides(clerk) }).catch((e: NodeJS.ErrnoException) => {
