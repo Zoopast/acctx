@@ -78,6 +78,20 @@ export class Store {
     }
   }
 
+  async renameProfile(provider: string, from: string, to: string): Promise<void> {
+    const src = this.profileDir(provider, from);
+    const dst = this.profileDir(provider, to);
+    if (!(await this.hasProfile(provider, from))) throw new UserError(`No ${provider} profile named "${from}".`);
+    if (from === to) return;
+    if (await this.hasProfile(provider, to)) throw new UserError(`Profile ${provider}/${to} already exists.`, "Pick another name or remove it first.");
+    await fs.rename(src, dst);
+    const state = await this.readState();
+    if (state.active[provider] === from) {
+      state.active[provider] = to;
+      await this.writeState(state);
+    }
+  }
+
   async readState(): Promise<State> {
     return (await readJson<State>(path.join(this.root, "state.json"))) ?? { active: {} };
   }

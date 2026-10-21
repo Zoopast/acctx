@@ -9,6 +9,7 @@ acctx add vercel work            # log into another account (Vercel's own device
 acctx use vercel work            # switch — `vercel whoami` now reports "work"
 acctx use                        # interactive picker
 acctx list
+acctx rename vercel work client   # renames; the active pointer follows
 ```
 
 ## How it works

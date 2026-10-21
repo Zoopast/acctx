@@ -163,3 +163,33 @@ test("add (in-place) requires a name", async () => {
   const p = fakeProvider({ loginMode: "in-place" });
   await assert.rejects(new Switcher(store, env).add(p, undefined), (e: unknown) => e instanceof UserError && /name is required/.test(e.message));
 });
+
+test("rename moves the profile and follows the active pointer", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const sw = new Switcher(store, env);
+  await writeLive(home, { token: "a", user: "alice" });
+  await sw.importLive(p, "alice");
+  await store.renameProfile("fake", "alice", "ally");
+  assert.equal(await store.hasProfile("fake", "alice"), false);
+  assert.equal(await store.hasProfile("fake", "ally"), true);
+  assert.equal((await store.readState()).active["fake"], "ally");
+  // switching back by the new name still works
+  await writeLive(home, { token: "a2", user: "alice" });
+  await sw.use(p, "ally");
+  assert.equal((await readLive(home)).token, "a2");
+});
+
+test("rename refuses missing source, existing target, and bad names", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const sw = new Switcher(store, env);
+  await writeLive(home, { token: "a", user: "alice" });
+  await sw.importLive(p, "alice");
+  await assert.rejects(store.renameProfile("fake", "nope", "x"), UserError);
+  await assert.rejects(store.renameProfile("fake", "alice", "alice2/../x"), UserError);
+  await writeLive(home, { token: "b", user: "bob" });
+  await sw.importLive(p, "bob");
+  await assert.rejects(store.renameProfile("fake", "bob", "alice"), /already exists/);
+  assert.equal((await store.readState()).active["fake"], "bob");
+});
