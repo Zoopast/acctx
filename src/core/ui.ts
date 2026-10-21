@@ -86,7 +86,7 @@ function selectTty<T>(title: string, items: T[], render: (i: T, n: number) => st
     let idx = 0;
     const w = process.stderr;
     const lines = () => [
-      `${s.bold(title)} ${s.dim("↑↓ move · enter select · esc cancel")}`,
+      `${s.bold(title)} ${s.dim("↑↓ move · enter select · esc back")}`,
       ...items.map((it, i) => (i === idx ? `${s.cyan(sym.arrow)} ${s.bold(render(it, i))}` : `  ${render(it, i)}`)),
     ];
     let drawn = 0;

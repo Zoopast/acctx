@@ -15,7 +15,7 @@ const COMMANDS: Array<[string, string, string]> = [
   ["check [provider] [name]", "Verify saved logins are still valid, without switching", ""],
   ["rename <provider> <old> <new>", "Rename a saved profile", ""],
   ["remove <provider> <name>", "Delete a saved profile (asks; --force to skip, required when piped)", "--force"],
-  ["providers [id]", "Supported providers and how each one stores its login", ""],
+  ["providers [id]", "Browse providers: state, storage, profiles (interactive on a TTY)", "--json"],
 ];
 
 export function helpText(ui: Ui): string {
@@ -75,49 +75,100 @@ function warnOverrides(ctx: Context, p: Provider): void {
   if (set.length) ctx.ui.warn(`${set.join(", ")} is set in your environment; the ${p.displayName} CLI will use it instead of the switched login.`);
 }
 
+interface ProviderStatus {
+  live: boolean;
+  active: string | undefined;
+  profiles: Array<{ name: string; label: string; active: boolean }>;
+  overrides: string[];
+}
+
+async function providerStatus(ctx: Context, p: Provider): Promise<ProviderStatus> {
+  const state = await ctx.store.readState();
+  const profiles = (await ctx.store.listProfiles(p.id)).map((x) => ({ name: x.name, label: x.meta.label, active: state.active[p.id] === x.name }));
+  return { live: await ctx.switcher.liveExists(p), active: state.active[p.id], profiles, overrides: ctx.switcher.activeOverrides(p) };
+}
+
+/** One-line status used in the list and picker: ● logged in · 2 profiles · active work */
+export function providerSummaryLine(st: ProviderStatus, s: Ui["s"]): string {
+  const parts: string[] = [];
+  if (st.live) parts.push(st.active ? `active ${s.green(st.active)}` : s.yellow("logged in, not saved"));
+  else parts.push(s.dim("not logged in"));
+  parts.push(s.dim(`${st.profiles.length} profile${st.profiles.length === 1 ? "" : "s"}`));
+  if (st.overrides.length) parts.push(s.yellow(`${sym.warn} ${st.overrides.join(", ")} set`));
+  return parts.join(s.dim(" · "));
+}
+
+/** Full detail view for one provider: storage explanation, files, profiles, machine state. */
+export function renderProviderDetail(p: Provider, files: Array<{ path: string; required: boolean; virtual?: boolean }>, st: ProviderStatus, s: Ui["s"]): string {
+  const L: string[] = [];
+  L.push(`${s.bold(p.displayName)} ${s.dim(`(${p.id})`)}  ${providerSummaryLine(st, s)}`);
+  L.push(`  ${p.storage.summary}`);
+  L.push("");
+  L.push(s.bold("  Stored at"));
+  L.push(`    ${s.dim(p.storage.location)}`);
+  for (const f of files) L.push(`    ${f.path}  ${s.dim((f.required ? "required" : "optional") + (f.virtual ? ", not a file" : ""))}`);
+  L.push("");
+  L.push(`${s.bold("  Login")}     ${p.storage.login}`);
+  L.push(`${s.bold("  Identity")}  ${p.storage.identity}`);
+  if (p.storage.overrideEnv.length) L.push(`${s.bold("  Env")}       ${p.storage.overrideEnv.join(", ")} ${s.dim("(if set, the CLI ignores the stored login)")}`);
+  if (p.storage.caveats.length) {
+    L.push(s.bold("  Caveats"));
+    for (const c of p.storage.caveats) L.push(`    ${s.dim("•")} ${c}`);
+  }
+  L.push(`${s.bold("  Verified")}  ${s.dim(p.storage.verified)}`);
+  L.push("");
+  L.push(s.bold("  Profiles"));
+  if (st.profiles.length === 0) L.push(`    ${s.dim(`none yet · acctx ${st.live ? "import" : "add"} ${p.id} <name>`)}`);
+  const w = Math.max(0, ...st.profiles.map((x) => x.name.length));
+  for (const x of st.profiles) {
+    const mark = x.active ? s.green(sym.active) : " ";
+    const name = x.active ? s.bold(s.green(x.name.padEnd(w))) : x.name.padEnd(w);
+    L.push(`    ${mark} ${name}${x.label !== x.name ? "  " + s.cyan(x.label) : ""}${x.active ? s.dim("  active") : ""}`);
+  }
+  if (st.live && !st.active) L.push(`    ${s.yellow(sym.warn)} the live login is not saved: acctx import ${p.id} <name>`);
+  if (st.overrides.length) L.push(`    ${s.yellow(sym.warn)} ${st.overrides.join(", ")} is set; the CLI will ignore the stored login`);
+  return L.join("\n");
+}
+
 async function providersCmd(ctx: Context, reg: Registry): Promise<number> {
   const { ui } = ctx;
   const { s } = ui;
+  const env = ctx.switcher.env;
   if (ctx.flags["json"]) {
-    ui.out(JSON.stringify(reg.providers.map((p) => ({ id: p.id, displayName: p.displayName, loginMode: p.loginMode, ...p.storage, files: p.files(ctx.switcher.env).map((f) => f.path) })), null, 2));
+    const rows = [];
+    for (const p of reg.providers) {
+      const st = await providerStatus(ctx, p);
+      rows.push({ id: p.id, displayName: p.displayName, loginMode: p.loginMode, ...p.storage, files: p.files(env).map((f) => f.path), ...st });
+    }
+    ui.out(JSON.stringify(rows, null, 2));
     return 0;
   }
   if (ctx.args[0]) {
     const p = reg.getProvider(ctx.args[0]);
-    const live = await ctx.switcher.liveExists(p);
-    const state = await ctx.store.readState();
-    ui.out(`${s.bold(p.displayName)} ${s.dim(`(${p.id})`)}`);
-    ui.out(`  ${p.storage.summary}`);
-    ui.out("");
-    ui.out(s.bold("  Stored at"));
-    ui.out(`    ${s.dim(p.storage.location)}`);
-    for (const f of p.files(ctx.switcher.env)) {
-      ui.out(`    ${f.path}  ${s.dim((f.required ? "required" : "optional") + (f.virtual ? ", not a file" : ""))}`);
-    }
-    ui.out("");
-    ui.out(s.bold("  Login") + `   ${p.storage.login}`);
-    ui.out(s.bold("  Identity") + ` ${p.storage.identity}`);
-    if (p.storage.overrideEnv.length) ui.out(s.bold("  Env overrides") + ` ${p.storage.overrideEnv.join(", ")} ${s.dim("(if set, the CLI ignores the file)")}`);
-    if (p.storage.caveats.length) {
-      ui.out(s.bold("  Caveats"));
-      for (const c of p.storage.caveats) ui.out(`    ${s.dim("•")} ${c}`);
-    }
-    ui.out(s.bold("  Verified") + ` ${s.dim(p.storage.verified)}`);
-    ui.out("");
-    const active = state.active[p.id];
-    ui.out(s.bold("  On this machine") + ` ${live ? (active ? `logged in, active profile ${s.green(active)}` : s.yellow("logged in, not saved")) : s.dim("not logged in")}`);
-    const set = ctx.switcher.activeOverrides(p);
-    if (set.length) ui.out(`    ${s.yellow(sym.warn)} ${set.join(", ")} is set; the CLI will ignore the file`);
+    ui.out(renderProviderDetail(p, p.files(env), await providerStatus(ctx, p), s));
     return 0;
   }
-  const w = Math.max(...reg.providers.map((p) => p.id.length));
-  for (const p of reg.providers) {
-    const live = (await ctx.switcher.liveExists(p)) ? s.green(sym.active) : s.dim("○");
-    ui.out(`${live} ${s.cyan(p.id.padEnd(w))}  ${p.displayName.padEnd(22)} ${s.dim(p.loginMode.padEnd(9))} ${s.dim(p.storage.location)}`);
+  const statuses = new Map<string, ProviderStatus>();
+  for (const p of reg.providers) statuses.set(p.id, await providerStatus(ctx, p));
+  const w = Math.max(...reg.providers.map((p) => p.displayName.length));
+  const row = (p: Provider) => `${p.displayName.padEnd(w)}  ${providerSummaryLine(statuses.get(p.id)!, s)}`;
+  if (!ctx.interactive) {
+    for (const p of reg.providers) {
+      const st = statuses.get(p.id)!;
+      ui.out(`${st.live ? s.green(sym.active) : s.dim("○")} ${s.cyan(p.id.padEnd(10))} ${row(p)}`);
+    }
+    ui.out("");
+    ui.out(s.dim("acctx providers <id> for details"));
+    return 0;
   }
-  ui.out("");
-  ui.out(s.dim(`${sym.active} logged in on this machine · acctx providers <id> for details`));
-  return 0;
+  // Interactive: pick a provider, read its detail, Esc to leave.
+  for (;;) {
+    const picked = await ui.select("Providers", [...reg.providers], row);
+    if (!picked) return 0;
+    ui.out("");
+    ui.out(renderProviderDetail(picked, picked.files(env), statuses.get(picked.id)!, s));
+    ui.out("");
+  }
 }
 
 async function list(ctx: Context, reg: Registry): Promise<number> {

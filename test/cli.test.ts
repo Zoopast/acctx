@@ -25,3 +25,21 @@ test("ui writes status to stderr and data to stdout", () => {
   assert.deepEqual(out, ["data"]);
   assert.deepEqual(err, ["✓ done", "✗ bad", "  fix it"]);
 });
+
+test("provider detail renders storage explanation, files and profiles without ANSI", async () => {
+  const { renderProviderDetail, providerSummaryLine } = await import("../src/commands/index.js");
+  const { styles } = await import("../src/core/ui.js");
+  const { vercel } = await import("../src/providers/vercel.js");
+  const s = styles(false);
+  const st = { live: true, active: "work", profiles: [{ name: "work", label: "gravita", active: true }, { name: "personal", label: "personal", active: false }], overrides: ["VERCEL_TOKEN"] };
+  const out = renderProviderDetail(vercel, [{ path: "/h/auth.json", required: true }], st, s);
+  assert.match(out, /Vercel \(vercel\)/);
+  assert.match(out, /Stored at\n/);
+  assert.match(out, /\/h\/auth.json  required/);
+  assert.match(out, /● work      gravita  active/);
+  assert.match(out, /  personal\n/);
+  assert.match(out, /VERCEL_TOKEN is set/);
+  assert.doesNotMatch(out, /\x1b/);
+  assert.equal(providerSummaryLine({ ...st, overrides: [] }, s), "active work · 2 profiles");
+  assert.equal(providerSummaryLine({ live: false, active: undefined, profiles: [], overrides: [] }, s), "not logged in · 0 profiles");
+});
