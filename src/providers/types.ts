@@ -46,4 +46,12 @@ export interface Provider {
    * the authoritative copy and the core re-syncs it to the live location.
    */
   identify(dir: string, env: Env): Promise<Identity | null>;
+  /**
+   * Check that the credentials in `dir` are still accepted by the provider.
+   * Like identify(), may refresh files in `dir`. Omit when identify() already
+   * fails for dead credentials (the core falls back to identify() !== null).
+   */
+  verify?(dir: string, env: Env): Promise<VerifyResult>;
 }
+
+export interface VerifyResult { ok: boolean; label?: string; reason?: string }

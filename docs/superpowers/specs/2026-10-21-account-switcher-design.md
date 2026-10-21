@@ -159,6 +159,7 @@ This is also the onboarding step for an existing login.
 | `acctx list [provider]` | table: provider, name, label, active marker |
 | `acctx current [provider]` | active profile(s) |
 | `acctx remove <provider> <name>` | delete profile (refuses if active unless `--force`) |
+| `acctx check [provider] [name]` | validate saved logins on a scratch copy, without switching; refreshed files are written back |
 | `acctx providers` | list supported providers |
 
 Exit codes: 0 ok, 1 user error (message, no stack), 2 unexpected (stack only
@@ -171,8 +172,10 @@ with `ACCTX_DEBUG=1`, after redaction).
   `--debug`; `redact()` masks any value of a key matching
   `/token|secret|key|password/i` and any string ≥ 32 chars of `[A-Za-z0-9_-]`
   before it reaches stderr.
-- acctx makes no network calls itself; only the provider's own CLI does, as a
-  child process with inherited stdio so the user sees the real login prompt.
+- acctx makes no network calls itself, except a provider's optional
+  `verify()`/`identify()` hitting that provider's own API read-only when its
+  CLI offers no whoami (Convex: list teams). Login flows always go through the
+  provider's own CLI as a child process with inherited stdio.
 - No dependencies, so no supply-chain surface beyond Node and the provider CLI.
 - `remove` deletes files; it does not revoke tokens server-side (the user can
   run `vercel logout` after `use` if they want revocation). Documented.

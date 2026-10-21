@@ -2,7 +2,7 @@ import path from "node:path";
 import { readJson, writeAtomic, removeIfExists } from "../core/fsx.js";
 import { UserError } from "../core/errors.js";
 import type { Env } from "../core/env.js";
-import type { Provider, Identity } from "./types.js";
+import type { Provider, Identity, VerifyResult } from "./types.js";
 
 /** Shape of auth.json; only non-secret fields are read. */
 interface VercelAuth { userId?: string }
@@ -36,6 +36,18 @@ export const vercel: Provider = {
   async fingerprint(paths) {
     const auth = paths["auth.json"] ? await readJson<VercelAuth>(paths["auth.json"]) : null;
     return auth?.userId ?? null;
+  },
+
+  async verify(dir, env): Promise<VerifyResult> {
+    const res = await env
+      .run("vercel", ["whoami", "--global-config", dir, "--non-interactive"], {
+        stdio: "pipe", env: { VERCEL_TELEMETRY_DISABLED: "1" }, timeoutMs: 20_000,
+      })
+      .catch((e: NodeJS.ErrnoException) => ({ code: -1, stdout: "", stderr: e.code === "ENOENT" ? "vercel CLI not found" : e.message }));
+    for (const junk of ["telemetry-device.json", "telemetry-session.json"]) await removeIfExists(path.join(dir, junk));
+    if (res.code === 0) return { ok: true, label: lastNonEmptyLine(res.stdout) ?? "" };
+    const reason = lastNonEmptyLine(res.stderr + "\n" + res.stdout) ?? `exit ${res.code}`;
+    return { ok: false, reason: reason.replace(/^Error:\s*/, "") };
   },
 
   async identify(dir, env): Promise<Identity | null> {

@@ -5,7 +5,7 @@ import { copyAtomic, ensureDir, exists, removeIfExists } from "./fsx.js";
 import { UserError } from "./errors.js";
 import type { Store, ProfileMeta } from "./store.js";
 import type { Env } from "./env.js";
-import type { Provider, Identity } from "../providers/types.js";
+import type { Provider, Identity, VerifyResult } from "../providers/types.js";
 
 export interface SwitchOptions {
   /** Overwrite live credentials that are not saved in any profile. */
@@ -126,6 +126,46 @@ export class Switcher {
     const touched = { ...meta, lastUsedAt: new Date().toISOString() };
     await this.store.writeMeta(provider.id, name, touched);
     return touched;
+  }
+
+  /**
+   * Validate a saved profile against the provider without switching to it.
+   * Runs on a scratch copy; if the provider refreshed the credentials there,
+   * the refreshed copy is written back to the profile (and to the live
+   * location when that profile is active) so nothing goes stale.
+   */
+  async verifyProfile(provider: Provider, name: string): Promise<VerifyResult> {
+    const dir = this.store.profileDir(provider.id, name);
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "acctx-verify-"));
+    await fs.chmod(scratch, 0o700);
+    try {
+      const before = new Map<string, Buffer>();
+      for (const f of provider.files(this.env)) {
+        const src = path.join(dir, f.name);
+        if (exists(src)) {
+          const data = await fs.readFile(src);
+          before.set(f.name, data);
+          await copyAtomic(src, path.join(scratch, f.name), f.mode);
+        }
+      }
+      const result = provider.verify
+        ? await provider.verify(scratch, this.env)
+        : await provider.identify(scratch, this.env).then((id) => ({ ok: id !== null, ...(id ? { label: id.label } : {}) }));
+      let changed = false;
+      for (const f of provider.files(this.env)) {
+        const p = path.join(scratch, f.name);
+        if (!exists(p)) continue;
+        const data = await fs.readFile(p);
+        if (!before.get(f.name)?.equals(data)) {
+          await copyAtomic(p, path.join(dir, f.name), f.mode);
+          changed = true;
+        }
+      }
+      if (changed && (await this.store.readState()).active[provider.id] === name) await this.applyProfile(provider, name);
+      return result;
+    } finally {
+      await fs.rm(scratch, { recursive: true, force: true });
+    }
   }
 
   /** Copy a profile's files over the live location (atomic per file). */

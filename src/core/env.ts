@@ -20,6 +20,8 @@ export interface Env {
   xdgConfigHome: string;
   vars: Record<string, string | undefined>;
   run(cmd: string, args: string[], opts: RunOptions): Promise<RunResult>;
+  /** HTTP for providers whose CLI has no whoami; only ever used against the provider's own API. */
+  fetch: typeof globalThis.fetch;
 }
 
 export function realEnv(vars: Record<string, string | undefined> = process.env): Env {
@@ -29,6 +31,7 @@ export function realEnv(vars: Record<string, string | undefined> = process.env):
     xdgDataHome: vars["XDG_DATA_HOME"] ?? path.join(home, ".local", "share"),
     xdgConfigHome: vars["XDG_CONFIG_HOME"] ?? path.join(home, ".config"),
     vars,
+    fetch: (input, init) => globalThis.fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(15_000) }),
     run(cmd, args, opts) {
       return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, {
