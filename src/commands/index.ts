@@ -4,11 +4,12 @@ import { UserError } from "../core/errors.js";
 import { formatList, formatListJson } from "../core/format.js";
 import { sym, type Ui } from "../core/ui.js";
 
-interface Registry { providers: readonly Provider[]; getProvider(id: string): Provider }
+import { type Registry, statusCmd } from "./project.js";
 
 const COMMANDS: Array<[string, string, string]> = [
   ["add <provider> [name]", "Log into a new account and save it as a profile", ""],
   ["import <provider> <name>", "Save the account the CLI is currently logged into", ""],
+  ["status", "Check the project's .acctx.json against the active accounts", "--json"],
   ["use [provider] [name]", "Switch to a profile (interactive picker if omitted)", "--discard"],
   ["list [provider]", "List saved profiles", "--json"],
   ["current [provider]", "Show the active profile(s)", ""],
@@ -57,6 +58,7 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "current": return current(ctx, reg);
     case "add": case "login": return add(ctx, reg);
     case "import": case "save": return importCmd(ctx, reg);
+    case "status": return statusCmd(ctx, reg);
     case "use": case "switch": return use(ctx, reg);
     case "check": case "verify": return check(ctx, reg);
     case "rename": case "mv": return rename(ctx, reg);
