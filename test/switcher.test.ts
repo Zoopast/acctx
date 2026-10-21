@@ -193,3 +193,37 @@ test("rename refuses missing source, existing target, and bad names", async () =
   await assert.rejects(store.renameProfile("fake", "bob", "alice"), /already exists/);
   assert.equal((await store.readState()).active["fake"], "bob");
 });
+
+test("verifyProfile runs on a scratch copy and writes refreshed files back (and to live when active)", async () => {
+  const { home, store, env } = await setup();
+  const base = fakeProvider();
+  const seen: string[] = [];
+  const p = {
+    ...base,
+    async verify(dir: string) {
+      seen.push(dir);
+      await fs.writeFile(path.join(dir, "auth.json"), JSON.stringify({ token: "refreshed", user: "alice" }));
+      return { ok: true, label: "alice" };
+    },
+  };
+  const sw = new Switcher(store, env);
+  await writeLive(home, { token: "a", user: "alice" });
+  await sw.importLive(p, "alice");
+  const r = await sw.verifyProfile(p, "alice");
+  assert.equal(r.ok, true);
+  assert.notEqual(seen[0], store.profileDir("fake", "alice"), "provider must not touch the stored profile directly");
+  const saved = JSON.parse(await fs.readFile(path.join(store.profileDir("fake", "alice"), "auth.json"), "utf8"));
+  assert.equal(saved.token, "refreshed");
+  assert.equal((await readLive(home)).token, "refreshed", "active profile re-applied to live");
+});
+
+test("verifyProfile falls back to identify() when provider has no verify()", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const sw = new Switcher(store, env);
+  await writeLive(home, { token: "a", user: "alice" });
+  await sw.importLive(p, "alice");
+  assert.equal((await sw.verifyProfile(p, "alice")).ok, true);
+  await fs.writeFile(path.join(store.profileDir("fake", "alice"), "auth.json"), "{}");
+  assert.equal((await sw.verifyProfile(p, "alice")).ok, false);
+});

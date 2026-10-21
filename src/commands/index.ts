@@ -15,6 +15,7 @@ Usage:
   acctx use [provider] [name]       Switch to a profile (interactive picker if omitted)
   acctx list [provider]             List saved profiles (--json for scripts)
   acctx current [provider]          Show the active profile(s)
+  acctx check [provider] [name]     Verify saved logins are still valid (no switching)
   acctx rename <provider> <old> <new>  Rename a saved profile
   acctx remove <provider> <name>    Delete a saved profile (--force if it is active)
   acctx providers                   List supported providers
@@ -43,6 +44,7 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "add": return add(ctx, reg);
     case "import": return importCmd(ctx, reg);
     case "use": return use(ctx, reg);
+    case "check": case "verify": return check(ctx, reg);
     case "rename": case "mv": return rename(ctx, reg);
     case "remove": case "rm": return remove(ctx, reg);
     default:
@@ -143,6 +145,29 @@ async function pick(ctx: Context, provider?: string): Promise<{ provider: string
   } finally {
     rl.close();
   }
+}
+
+async function check(ctx: Context, reg: Registry): Promise<number> {
+  const provider = ctx.args[0] ? reg.getProvider(ctx.args[0]).id : undefined;
+  const only = ctx.args[1];
+  let profiles = await ctx.store.listProfiles(provider);
+  if (only) profiles = profiles.filter((p) => p.name === only);
+  if (profiles.length === 0) throw new UserError("No matching profiles to check.");
+  const state = await ctx.store.readState();
+  const color = shouldColor(process.env, Boolean(process.stdout.isTTY));
+  const ok = color ? "\x1b[32m✓\x1b[0m" : "✓";
+  const bad = color ? "\x1b[31m✗\x1b[0m" : "✗";
+  let failures = 0;
+  const w = Math.max(...profiles.map((p) => `${p.provider}/${p.name}`.length));
+  for (const p of profiles) {
+    const id = `${p.provider}/${p.name}`.padEnd(w);
+    const active = state.active[p.provider] === p.name ? " (active)" : "";
+    const r = await ctx.switcher.verifyProfile(reg.getProvider(p.provider), p.name);
+    if (r.ok) ctx.out(`${ok} ${id}  ${r.label ?? ""}${active}`);
+    else { failures++; ctx.out(`${bad} ${id}  ${r.reason ?? "invalid"}${active}`); }
+  }
+  if (failures) ctx.err(`${failures} of ${profiles.length} profile(s) failed. Re-add a failed one with: acctx remove <provider> <name> && acctx add <provider> <name>`);
+  return failures ? 1 : 0;
 }
 
 async function rename(ctx: Context, reg: Registry): Promise<number> {

@@ -11,9 +11,10 @@ export async function tmpDir(): Promise<string> {
 
 export interface FakeRun { calls: Array<{ cmd: string; args: string[] }>; handler: (cmd: string, args: string[], opts: RunOptions) => Promise<RunResult> | RunResult }
 
-export function fakeEnv(home: string, handler?: FakeRun["handler"]): Env & { calls: FakeRun["calls"] } {
+export function fakeEnv(home: string, handler?: FakeRun["handler"], fetchImpl?: typeof fetch): Env & { calls: FakeRun["calls"] } {
   const calls: FakeRun["calls"] = [];
   return {
+    fetch: fetchImpl ?? (async () => { throw new Error("network disabled in tests"); }),
     home,
     xdgDataHome: path.join(home, ".local", "share"),
     xdgConfigHome: path.join(home, ".config"),

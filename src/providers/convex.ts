@@ -1,7 +1,26 @@
 import path from "node:path";
 import { UserError } from "../core/errors.js";
 import type { Env } from "../core/env.js";
-import type { Provider, Identity } from "./types.js";
+import { readJson } from "../core/fsx.js";
+import type { Provider, Identity, VerifyResult } from "./types.js";
+
+const TEAMS_URL = "https://api.convex.dev/api/dashboard/teams";
+
+interface ConvexConfig { accessToken?: string }
+interface ConvexTeam { id?: number; name?: string; slug?: string }
+
+/**
+ * The Convex CLI has no whoami, so the only way to label or validate a login
+ * is one read-only call to Convex's own API listing the account's teams.
+ */
+async function teams(dir: string, env: Env): Promise<{ status: number; teams: ConvexTeam[] }> {
+  const cfg = await readJson<ConvexConfig>(path.join(dir, "config.json"));
+  if (!cfg?.accessToken) return { status: 0, teams: [] };
+  const res = await env.fetch(TEAMS_URL, { headers: { Authorization: `Bearer ${cfg.accessToken}`, "Convex-Client": "acctx-0.1.0" } });
+  if (!res.ok) return { status: res.status, teams: [] };
+  const body = (await res.json()) as unknown;
+  return { status: res.status, teams: Array.isArray(body) ? (body as ConvexTeam[]) : [] };
+}
 
 /**
  * Convex stores a single ~/.convex/config.json = { accessToken }. Its CLI has
@@ -26,10 +45,27 @@ export const convex: Provider = {
     if (res.code !== 0) throw new UserError("Convex login failed or was cancelled.", "Your previous login is still saved in its profile.");
   },
 
-  async identify(_dir, _env): Promise<Identity | null> {
-    // The Convex CLI exposes no offline "whoami" and the token is the only
-    // field in the file, so there is nothing safe to label from. The user
-    // names the profile instead.
-    return null;
+  async identify(dir, env): Promise<Identity | null> {
+    try {
+      const { status, teams: list } = await teams(dir, env);
+      if (status !== 200 || list.length === 0) return null;
+      const names = list.map((t) => t.name ?? t.slug ?? "").filter(Boolean);
+      const first = names[0] ?? "convex";
+      return { label: names.length > 1 ? `${first} +${names.length - 1}` : first, details: { teams: names.join(", ") } };
+    } catch {
+      return null; // offline: the profile is still usable, just unlabeled
+    }
+  },
+
+  async verify(dir, env): Promise<VerifyResult> {
+    try {
+      const { status, teams: list } = await teams(dir, env);
+      if (status === 200) return { ok: true, label: list.map((t) => t.name ?? t.slug).filter(Boolean).join(", ") };
+      if (status === 0) return { ok: false, reason: "config.json has no accessToken" };
+      if (status === 401 || status === 403) return { ok: false, reason: `token rejected (HTTP ${status}); log in again with: acctx add convex <name>` };
+      return { ok: false, reason: `unexpected HTTP ${status}` };
+    } catch (e) {
+      return { ok: false, reason: `could not reach api.convex.dev (${(e as Error).message})` };
+    }
   },
 };

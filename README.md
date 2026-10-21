@@ -9,6 +9,7 @@ acctx add vercel work            # log into another account (Vercel's own device
 acctx use vercel work            # switch — `vercel whoami` now reports "work"
 acctx use                        # interactive picker
 acctx list                       # grouped by provider; --json for scripts
+acctx check                      # verify every saved login is still accepted, without switching
 acctx rename vercel work client  # renames; the active pointer follows
 ```
 
@@ -44,8 +45,11 @@ current login into its profile first and then runs `npx convex login`.
 
 - Tokens are never accepted as arguments and never printed; error output is
   passed through a redactor.
-- acctx makes no network requests. Only the provider's CLI does, as a child
-  process you can see.
+- acctx makes no network requests of its own, with one documented exception:
+  the Convex CLI has no `whoami`, so labeling and checking a Convex profile
+  makes a single read-only request to Convex's own API (`api.convex.dev`,
+  list teams) with that profile's token. Everything else goes through the
+  provider's CLI as a child process you can see.
 - Zero runtime dependencies.
 - `use` refuses to overwrite a live login that is not saved in any profile,
   and refuses to capture a login into the active profile when an offline
