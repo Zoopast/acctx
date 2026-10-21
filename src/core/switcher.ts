@@ -151,6 +151,14 @@ export class Switcher {
       const result = provider.verify
         ? await provider.verify(scratch, this.env)
         : await provider.identify(scratch, this.env).then((id) => ({ ok: id !== null, ...(id ? { label: id.label } : {}) }));
+      if (result.ok) {
+        // Refresh the stored label while we have valid credentials at hand.
+        const id = await provider.identify(scratch, this.env);
+        const meta = await this.store.readMeta(provider.id, name);
+        if (id && meta && (meta.identity?.label !== id.label || JSON.stringify(meta.identity?.details) !== JSON.stringify(id.details))) {
+          await this.store.writeMeta(provider.id, name, { ...meta, label: id.label, identity: id, updatedAt: new Date().toISOString() });
+        }
+      }
       let changed = false;
       for (const f of provider.files(this.env)) {
         const p = path.join(scratch, f.name);
