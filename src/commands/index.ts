@@ -14,6 +14,7 @@ Usage:
   acctx use [provider] [name]       Switch to a profile (interactive picker if omitted)
   acctx list [provider]             List saved profiles
   acctx current [provider]          Show the active profile(s)
+  acctx rename <provider> <old> <new>  Rename a saved profile
   acctx remove <provider> <name>    Delete a saved profile (--force if it is active)
   acctx providers                   List supported providers
 
@@ -41,6 +42,7 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "add": return add(ctx, reg);
     case "import": return importCmd(ctx, reg);
     case "use": return use(ctx, reg);
+    case "rename": case "mv": return rename(ctx, reg);
     case "remove": case "rm": return remove(ctx, reg);
     default:
       throw new UserError(`Unknown command "${cmd}".`, "Run `acctx --help` for usage.");
@@ -141,6 +143,15 @@ async function pick(ctx: Context, provider?: string): Promise<{ provider: string
   } finally {
     rl.close();
   }
+}
+
+async function rename(ctx: Context, reg: Registry): Promise<number> {
+  const p = reg.getProvider(need(ctx, 0, "provider"));
+  const from = need(ctx, 1, "current profile name");
+  const to = need(ctx, 2, "new profile name");
+  await ctx.store.renameProfile(p.id, from, to);
+  ctx.out(`Renamed ${p.id}/${from} to ${p.id}/${to}.`);
+  return 0;
 }
 
 async function remove(ctx: Context, reg: Registry): Promise<number> {
