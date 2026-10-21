@@ -33,6 +33,7 @@ export function fakeProvider(opts: { loginMode?: Provider["loginMode"]; onLogin?
     id: "fake",
     displayName: "Fake",
     installHint: "n/a",
+    storage: { summary: "fake", location: "~/.fake", login: "fake", identity: "fake", overrideEnv: ["FAKE_TOKEN"], caveats: [], verified: "tests" },
     loginMode: opts.loginMode ?? "isolated",
     files: (env) => [
       { name: "auth.json", path: path.join(env.home, ".fake", "auth.json"), required: true, mode: 0o600 },

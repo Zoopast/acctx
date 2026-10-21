@@ -7,16 +7,16 @@ import { Store } from "./core/store.js";
 import { Switcher } from "./core/switcher.js";
 import { UserError } from "./core/errors.js";
 import { redact } from "./core/redact.js";
+import { createUi, type Ui } from "./core/ui.js";
 import { providers, getProvider } from "./providers/index.js";
-import { runCommand, HELP } from "./commands/index.js";
+import { runCommand, helpText } from "./commands/index.js";
 
 export interface Context {
   store: Store;
   switcher: Switcher;
   args: string[];
   flags: Record<string, string | boolean>;
-  out: (s: string) => void;
-  err: (s: string) => void;
+  ui: Ui;
   interactive: boolean;
 }
 
@@ -29,6 +29,7 @@ export function parseArgs(argv: string[]): { positional: string[]; flags: Record
       if (k) flags[k] = v ?? true;
     } else if (a === "-h") flags["help"] = true;
     else if (a === "-f") flags["force"] = true;
+    else if (a === "-y") flags["yes"] = true;
     else positional.push(a);
   }
   return { positional, flags };
@@ -40,29 +41,26 @@ export async function main(argv: string[]): Promise<number> {
   const env = realEnv();
   const root = env.vars["ACCTX_HOME"] ?? path.join(env.xdgConfigHome, "acctx");
   const store = new Store(root);
-  const ctx: Context = {
-    store,
-    switcher: new Switcher(store, env),
-    args: positional.slice(1),
-    flags,
-    out: (s) => process.stdout.write(s + "\n"),
-    err: (s) => process.stderr.write(s + "\n"),
-    interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) && !flags["non-interactive"],
-  };
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !flags["non-interactive"];
+  const ui = createUi({ env: env.vars, interactive });
+  const ctx: Context = { store, switcher: new Switcher(store, env), args: positional.slice(1), flags, ui, interactive };
   const cmd = positional[0];
-  if (!cmd || flags["help"] && !cmd) { ctx.out(HELP); return 0; }
+  if (!cmd || (flags["help"] && !cmd) || flags["version"]) {
+    if (flags["version"]) { ui.out("acctx 0.1.0"); return 0; }
+    ui.out(helpText(ui));
+    return 0;
+  }
   try {
     await store.init();
     return await runCommand(cmd, ctx, { providers, getProvider });
   } catch (e) {
     if (e instanceof UserError) {
-      ctx.err(`error: ${redact(e.message)}`);
-      if (e.hint) ctx.err(`  ${redact(e.hint).split("\n").join("\n  ")}`);
+      ui.error(redact(e.message), e.hint ? redact(e.hint) : undefined);
       return e.exitCode;
     }
     const err = e as Error;
-    ctx.err(`unexpected error: ${redact(err.message ?? String(e))}`);
-    if (env.vars["ACCTX_DEBUG"] && err.stack) ctx.err(redact(err.stack));
+    ui.error(`unexpected: ${redact(err.message ?? String(e))}`, env.vars["ACCTX_DEBUG"] ? undefined : "Set ACCTX_DEBUG=1 for a stack trace (secrets are redacted).");
+    if (env.vars["ACCTX_DEBUG"] && err.stack) process.stderr.write(redact(err.stack) + "\n");
     return 2;
   }
 }

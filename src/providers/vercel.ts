@@ -2,7 +2,7 @@ import path from "node:path";
 import { readJson, writeAtomic, removeIfExists } from "../core/fsx.js";
 import { UserError } from "../core/errors.js";
 import type { Env } from "../core/env.js";
-import type { Provider, Identity, VerifyResult } from "./types.js";
+import { withoutOverrides, type Provider, type Identity, type VerifyResult } from "./types.js";
 
 /** Shape of auth.json; only non-secret fields are read. */
 interface VercelAuth { userId?: string }
@@ -13,6 +13,18 @@ export const vercel: Provider = {
   displayName: "Vercel",
   installHint: "npm i -g vercel@latest",
   loginMode: "isolated",
+  storage: {
+    summary: "The Vercel CLI keeps an OAuth access token, refresh token and expiry in auth.json, and the selected team in config.json.",
+    location: "$XDG_DATA_HOME/com.vercel.cli/{auth.json,config.json} (default $HOME/.local/share/com.vercel.cli)",
+    login: "`vercel login --global-config <scratch>` with an empty auth.json seeds a fresh device-code login in an isolated directory; the active login is untouched.",
+    identity: "Offline: userId in auth.json (mismatch fingerprint). Online: `vercel whoami --global-config <copy>` for labels and checks; refreshed tokens are written back.",
+    overrideEnv: ["VERCEL_TOKEN"],
+    caveats: [
+      "config.json carries currentTeam and is part of the profile, so switching also switches the selected team. telemetry-*.json and agent-preferences.json are left alone.",
+      "`vercel switch` changes the team inside one account; acctx changes the account.",
+    ],
+    verified: "Linux, Vercel CLI 58.9: add (second account), import, use, check, rename, remove; whoami on the real CLI after every switch.",
+  },
 
   files(env: Env) {
     const dir = path.join(env.xdgDataHome, "com.vercel.cli");
@@ -29,7 +41,7 @@ export const vercel: Provider = {
   },
 
   async loginIsolated(dir, env) {
-    const res = await env.run("vercel", ["login", "--global-config", dir], { stdio: "inherit" }).catch(missingCli);
+    const res = await env.run("vercel", ["login", "--global-config", dir], { stdio: "inherit", env: withoutOverrides(vercel) }).catch(missingCli);
     if (res.code !== 0) throw new UserError("Vercel login failed or was cancelled.", "Nothing was saved.");
   },
 
@@ -41,7 +53,7 @@ export const vercel: Provider = {
   async verify(dir, env): Promise<VerifyResult> {
     const res = await env
       .run("vercel", ["whoami", "--global-config", dir, "--non-interactive"], {
-        stdio: "pipe", env: { VERCEL_TELEMETRY_DISABLED: "1" }, timeoutMs: 20_000,
+        stdio: "pipe", env: { VERCEL_TELEMETRY_DISABLED: "1", ...withoutOverrides(vercel) }, timeoutMs: 20_000,
       })
       .catch((e: NodeJS.ErrnoException) => ({ code: -1, stdout: "", stderr: e.code === "ENOENT" ? "vercel CLI not found" : e.message }));
     for (const junk of ["telemetry-device.json", "telemetry-session.json"]) await removeIfExists(path.join(dir, junk));
@@ -63,7 +75,7 @@ export const vercel: Provider = {
     const res = await env
       .run("vercel", ["whoami", "--global-config", dir, "--non-interactive"], {
         stdio: "pipe",
-        env: { VERCEL_TELEMETRY_DISABLED: "1" },
+        env: { VERCEL_TELEMETRY_DISABLED: "1", ...withoutOverrides(vercel) },
         timeoutMs: 20_000,
       })
       .catch(() => ({ code: 1, stdout: "", stderr: "" }));

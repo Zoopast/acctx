@@ -2,7 +2,7 @@ import path from "node:path";
 import { UserError } from "../core/errors.js";
 import type { Env } from "../core/env.js";
 import { readJson } from "../core/fsx.js";
-import type { Provider, Identity, VerifyResult } from "./types.js";
+import { withoutOverrides, type Provider, type Identity, type VerifyResult } from "./types.js";
 
 const TEAMS_URL = "https://api.convex.dev/api/dashboard/teams";
 
@@ -32,13 +32,25 @@ export const convex: Provider = {
   displayName: "Convex",
   installHint: "npm i -g convex  (or use npx convex)",
   loginMode: "in-place",
+  storage: {
+    summary: "The Convex CLI stores one account access token in a small JSON file.",
+    location: "$HOME/.convex/config.json",
+    login: "`npx convex login` has no config-dir option, so the current login is stashed into its profile first and the CLI logs in in place.",
+    identity: "No whoami exists, so acctx makes one read-only request to api.convex.dev listing the account's teams, with the profile's token. No offline fingerprint.",
+    overrideEnv: ["CONVEX_DEPLOY_KEY"],
+    caveats: [
+      "Without an offline fingerprint, acctx cannot detect a `npx convex login` made outside acctx; always add Convex accounts through `acctx add convex`.",
+      "Project directories keep their own deployment selection (.env.local); switching accounts does not change which deployment a project points at.",
+    ],
+    verified: "Linux, convex 1.47: add (second account), import, use, check, list; tokens validated against the Convex API.",
+  },
 
   files(env: Env) {
     return [{ name: "config.json", path: path.join(env.home, ".convex", "config.json"), required: true, mode: 0o600 }];
   },
 
   async loginInPlace(env) {
-    const res = await env.run("npx", ["convex", "login"], { stdio: "inherit" }).catch((e: NodeJS.ErrnoException) => {
+    const res = await env.run("npx", ["convex", "login"], { stdio: "inherit", env: withoutOverrides(convex) }).catch((e: NodeJS.ErrnoException) => {
       if (e.code === "ENOENT") throw new UserError("`npx` was not found on PATH.", `Install Node.js, then: ${convex.installHint}`);
       throw e;
     });

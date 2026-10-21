@@ -1,7 +1,7 @@
 # acctx
 
-Switch between accounts for developer CLIs. Vercel and Convex are supported;
-adding a provider is one small file.
+Switch between accounts for developer CLIs. Supported: Vercel, Convex, GitHub
+(`gh`), Supabase, Cloudflare (`wrangler`). Adding a provider is one small file.
 
 ```
 acctx import vercel personal     # save the account you are logged into right now
@@ -10,6 +10,8 @@ acctx use vercel work            # switch — `vercel whoami` now reports "work"
 acctx use                        # interactive picker
 acctx list                       # grouped by provider; --json for scripts
 acctx check                      # verify every saved login is still accepted, without switching
+acctx providers                  # what each provider stores, where, and how acctx handles it
+acctx providers github           # full explanation for one provider, with the paths on this machine
 acctx rename vercel work client  # renames; the active pointer follows
 ```
 
@@ -25,6 +27,21 @@ Convex
 ```
 
 Colors are used only on a terminal and honor `NO_COLOR` / `FORCE_COLOR`.
+
+## Providers
+
+| id | stores | login via acctx | identity check |
+|---|---|---|---|
+| `vercel` | `$XDG_DATA_HOME/com.vercel.cli/{auth.json,config.json}` | isolated (`--global-config`) | `vercel whoami`; offline `userId` fingerprint |
+| `convex` | `~/.convex/config.json` | in place (`npx convex login`) | one read-only call to the Convex API (no CLI whoami) |
+| `github` | `$GH_CONFIG_DIR/hosts.yml` | isolated (`GH_CONFIG_DIR`) | `gh auth status` / `gh api user`; offline `user:` fingerprint |
+| `supabase` | `~/.supabase/access-token` | in place (`supabase login`) | `supabase whoami` with the token passed as an env var |
+| `cloudflare` | `$XDG_CONFIG_HOME/.wrangler/config/default.toml` | isolated (`XDG_CONFIG_HOME`) | `wrangler whoami` on a staged copy |
+
+`acctx providers <id>` prints the full explanation: the exact files, how a new
+login is obtained, how identity is checked, which environment variables make
+the CLI ignore the file (acctx warns when one is set), caveats such as OS
+keyring storage, and what has actually been verified against the real CLI.
 
 ## How it works
 
@@ -61,11 +78,12 @@ current login into its profile first and then runs `npx convex login`.
 
 ## Status
 
-Verified against the real Vercel CLI on this machine: import, identify,
-switching between profiles, and the isolated-directory login mechanism. Not
-yet verified: `add vercel` with a second account, and every Convex flow (the
-Convex CLI was not installed here; its file layout comes from community
-reports linked in the spec).
+Exercised against real CLIs on Linux: Vercel and Convex end to end with two
+accounts each (add, use, check, rename, remove); GitHub and Supabase for
+import, check, list and use with a cloned profile (their login flows were not
+run); Cloudflare only for the config location and the logged-out `whoami`
+path, so its add/check/use are unverified. Each provider's `verified` line in
+`acctx providers <id>` says the same.
 
 ## Install
 
