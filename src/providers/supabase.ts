@@ -28,6 +28,7 @@ export const supabase: Provider = {
   id: "supabase",
   displayName: "Supabase",
   installHint: "https://supabase.com/docs/guides/cli (supabase)",
+  cli: "supabase",
   loginMode: "in-place",
   storage: {
     summary: "The Supabase CLI writes the personal access token as a raw string to a single file.",

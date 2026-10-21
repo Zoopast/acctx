@@ -31,6 +31,7 @@ export const convex: Provider = {
   id: "convex",
   displayName: "Convex",
   installHint: "npm i -g convex  (or use npx convex)",
+  cli: "convex",
   loginMode: "in-place",
   storage: {
     summary: "The Convex CLI stores one account access token in a small JSON file.",

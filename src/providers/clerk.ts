@@ -204,6 +204,7 @@ export const clerk: Provider = {
   id: "clerk",
   displayName: "Clerk",
   installHint: "npm i -g clerk  (or bun add -g clerk)",
+  cli: "clerk",
   loginMode: "in-place",
   storage: {
     summary: "The Clerk CLI keeps its OAuth session (access + refresh token) in the OS keyring, with a plain credentials file only as a fallback; config.json holds the user id and preferences.",
