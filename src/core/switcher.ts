@@ -122,8 +122,10 @@ export class Switcher {
     await this.stashLive(provider, opts);
     await this.applyProfile(provider, name);
     await this.store.setActive(provider.id, name);
-    const meta = await this.store.readMeta(provider.id, name);
-    return meta ?? { label: name, identity: null, createdAt: "", updatedAt: "" };
+    const meta = (await this.store.readMeta(provider.id, name)) ?? { label: name, identity: null, createdAt: "", updatedAt: "" };
+    const touched = { ...meta, lastUsedAt: new Date().toISOString() };
+    await this.store.writeMeta(provider.id, name, touched);
+    return touched;
   }
 
   /** Copy a profile's files over the live location (atomic per file). */
@@ -204,6 +206,7 @@ export class Switcher {
       identity: id,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      lastUsedAt: existing?.lastUsedAt ?? now,
     };
     await this.store.writeMeta(provider.id, name, meta);
     return meta;

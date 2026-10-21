@@ -3,6 +3,7 @@ import { stdin, stdout } from "node:process";
 import type { Context } from "../cli.js";
 import type { Provider } from "../providers/types.js";
 import { UserError } from "../core/errors.js";
+import { formatList, formatListJson, shouldColor } from "../core/format.js";
 
 interface Registry { providers: readonly Provider[]; getProvider(id: string): Provider }
 
@@ -12,7 +13,7 @@ Usage:
   acctx add <provider> [name]       Log into a new account and save it as a profile
   acctx import <provider> <name>    Save the account the CLI is currently logged into
   acctx use [provider] [name]       Switch to a profile (interactive picker if omitted)
-  acctx list [provider]             List saved profiles
+  acctx list [provider]             List saved profiles (--json for scripts)
   acctx current [provider]          Show the active profile(s)
   acctx rename <provider> <old> <new>  Rename a saved profile
   acctx remove <provider> <name>    Delete a saved profile (--force if it is active)
@@ -59,16 +60,15 @@ async function list(ctx: Context, reg: Registry): Promise<number> {
   const provider = ctx.args[0] ? reg.getProvider(ctx.args[0]).id : undefined;
   const profiles = await ctx.store.listProfiles(provider);
   const state = await ctx.store.readState();
-  if (profiles.length === 0) {
-    ctx.out(provider ? `No ${provider} profiles yet. Add one with: acctx add ${provider} <name>` : "No profiles yet. Add one with: acctx add vercel <name>");
+  if (ctx.flags["json"]) {
+    ctx.out(formatListJson(profiles, state.active));
     return 0;
   }
-  const w = Math.max(...profiles.map((p) => p.name.length), 4);
-  for (const p of profiles) {
-    const active = state.active[p.provider] === p.name ? "*" : " ";
-    const details = p.meta.identity?.details ? Object.entries(p.meta.identity.details).map(([k, v]) => `${k}=${v}`).join(" ") : "";
-    ctx.out(`${active} ${p.provider.padEnd(8)} ${p.name.padEnd(w)}  ${p.meta.label}${details ? "  " + details : ""}`);
-  }
+  const shown = provider ? reg.providers.filter((p) => p.id === provider) : reg.providers;
+  ctx.out(formatList(profiles, state.active, {
+    color: shouldColor(process.env, Boolean(process.stdout.isTTY)),
+    providers: shown,
+  }));
   return 0;
 }
 

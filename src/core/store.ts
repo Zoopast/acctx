@@ -11,6 +11,8 @@ export interface ProfileMeta {
   identity: Identity | null;
   createdAt: string;
   updatedAt: string;
+  /** Last time this profile was switched to (or imported/added). */
+  lastUsedAt?: string;
 }
 
 export interface State {
