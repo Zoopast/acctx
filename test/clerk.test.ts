@@ -18,7 +18,8 @@ function keyringSim(initial: string | null) {
     assert.ok(!args.some((a) => a.includes("SECRET")), "session must never be an argument");
     switch (args[0]) {
       case "search": return stored ? { code: 0, stdout: `${nextId}\n`, stderr: "" } : { code: 1, stdout: "", stderr: "keyctl_search: Required key not available" };
-      case "print": return { code: 0, stdout: stored ?? "", stderr: "" };
+      case "pipe": return { code: 0, stdout: stored ?? "", stderr: "" };
+      case "print": throw new Error("use pipe, print hex-encodes newlines");
       case "padd": stored = opts.input ?? null; nextId++; return { code: 0, stdout: `${nextId}\n`, stderr: "" };
       case "link": case "unlink": return { code: 0, stdout: "", stderr: "" };
       case "revoke": stored = null; return { code: 0, stdout: "", stderr: "" };
@@ -103,4 +104,14 @@ test("core switches a keyring-backed provider end to end (import, use, stash)", 
   assert.match(sim.get()!, /at_B/);
   const savedA = JSON.parse(await fs.readFile(path.join(store.profileDir("clerk", "a"), "session.json"), "utf8"));
   assert.equal(savedA.accessToken, "at_SECRET");
+});
+
+test("clerk store ignores an unparsable keyring value instead of capturing it", async () => {
+  if (process.platform !== "linux") return;
+  const home = await tmpDir();
+  const sim = keyringSim(":hex:7b22");
+  const store = clerk.liveStore!(fakeEnv(home, sim.handler as any));
+  assert.equal(await store.exists(), false);
+  assert.equal((await store.read())["session.json"], undefined);
+  assert.match((await clerk.validateFiles!(home))!, /not a Clerk session/);
 });
