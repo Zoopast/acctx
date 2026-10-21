@@ -1,6 +1,7 @@
 import type { Context } from "../cli.js";
 import type { Provider } from "../providers/types.js";
 import { UserError } from "../core/errors.js";
+import { sym } from "../core/ui.js";
 import { loadProject, type ProjectConfig } from "../core/project.js";
 import { projectStatus, formatStatusLine, type StatusEntry } from "../core/status.js";
 
@@ -27,4 +28,33 @@ export async function statusCmd(ctx: Context, reg: Registry): Promise<number> {
   if (ctx.flags["json"]) ctx.ui.out(JSON.stringify({ file: project.file, ok, entries }, null, 2));
   else printStatus(ctx, project, entries);
   return ok ? 0 : 1;
+}
+
+export async function useProject(ctx: Context, reg: Registry, project: ProjectConfig): Promise<number> {
+  const { ui } = ctx;
+  const entries = await projectStatus(ctx.store, ctx.switcher, reg, project);
+  const state = await ctx.store.readState();
+  const todo = entries.filter((e) => e.state === "inactive" || e.state === "logged-out");
+  const blocked = entries.filter((e) => !["ok", "inactive", "logged-out"].includes(e.state));
+  if (blocked.length) printStatus(ctx, project, blocked);
+  if (todo.length === 0) {
+    if (!blocked.length) ui.info(`Everything in ${project.file} is already active; nothing to do.`);
+    return blocked.length ? 1 : 0;
+  }
+  const w = Math.max(...todo.map((e) => e.provider.length));
+  for (const e of todo) ui.info(`${ui.s.cyan(e.provider.padEnd(w))}  ${state.active[e.provider] ?? ui.s.dim("none")} ${sym.arrow} ${ui.s.bold(e.profile!)} ${ui.s.dim(`(${e.label})`)}`);
+  let failed = 0;
+  for (const e of todo) {
+    const p = reg.getProvider(e.provider);
+    try {
+      const meta = await ctx.switcher.use(p, e.profile!, { discard: Boolean(ctx.flags["discard"]) });
+      ui.success(`${p.displayName} ${sym.arrow} ${ui.s.bold(e.profile!)} ${ui.s.dim(`(${meta.label})`)}`);
+    } catch (err) {
+      failed++;
+      if (err instanceof UserError) ui.error(`${p.displayName}: ${err.message}`, err.hint);
+      else throw err;
+    }
+  }
+  if (failed || blocked.length) ui.warn(`${failed + blocked.length} of ${entries.length} account(s) not applied.`);
+  return failed || blocked.length ? 1 : 0;
 }
