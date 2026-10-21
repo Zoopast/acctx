@@ -4,7 +4,7 @@ import type { Provider } from "../providers/types.js";
 import { UserError } from "../core/errors.js";
 import { sym } from "../core/ui.js";
 import { exists, writeAtomic } from "../core/fsx.js";
-import { loadProject, PROJECT_FILE, type ProjectConfig, type Selector } from "../core/project.js";
+import { findProjectFile, loadProject, PROJECT_FILE, type ProjectConfig, type Selector } from "../core/project.js";
 import type { ProfileMeta } from "../core/store.js";
 import { projectStatus, formatStatusLine, type StatusEntry } from "../core/status.js";
 
@@ -24,8 +24,16 @@ export function printStatus(ctx: Context, project: ProjectConfig, entries: Statu
 }
 
 export async function statusCmd(ctx: Context, reg: Registry): Promise<number> {
-  const project = await requireProject(ctx, reg);
-  if (project.entries.length === 0) throw new UserError(`${project.file} lists no providers.`, "Run: acctx init --force");
+  let project: ProjectConfig | null = null;
+  try {
+    project = await requireProject(ctx, reg);
+    if (project.entries.length === 0) throw new UserError(`${project.file} lists no providers.`, "Run: acctx init --force");
+  } catch (e) {
+    if (!(e instanceof UserError) || !ctx.flags["json"]) throw e;
+    const file = project?.file ?? (await findProjectFile(ctx.cwd, ctx.switcher.env.home).catch(() => null));
+    ctx.ui.out(JSON.stringify({ file, ok: false, error: e.message, hint: e.hint ?? null }, null, 2));
+    return 1;
+  }
   const entries = await projectStatus(ctx.store, ctx.switcher, reg, project);
   const ok = entries.every((e) => e.state === "ok");
   if (ctx.flags["json"]) ctx.ui.out(JSON.stringify({ file: project.file, ok, entries }, null, 2));
@@ -92,6 +100,7 @@ export async function initCmd(ctx: Context, reg: Registry, installSkill?: (scope
       if (!name) continue;
       const meta = await ctx.store.readMeta(p.id, name);
       if (meta) body[p.id] = selectorFor(name, meta, shared, ui, p.id);
+      else ui.warn(`${p.id}: active profile "${name}" has unreadable metadata; skipped.`);
     }
     if (Object.keys(body).length === 0) throw new UserError("No active profiles to write.", "Switch to the accounts this project uses first: acctx use <provider> <name>");
   } else {
@@ -115,9 +124,10 @@ export async function initCmd(ctx: Context, reg: Registry, installSkill?: (scope
   ui.success(`Wrote ${ui.s.bold(file)}`);
   for (const [id, sel] of Object.entries(body)) ui.out(`  ${ui.s.cyan(id)}  ${typeof sel === "string" ? `profile ${sel}` : Object.entries(sel).map(([k, v]) => `${k} ${v}`).join(", ")}`);
   ui.hint("Commit it (it holds no secrets). Check it any time with: acctx status");
-  if (installSkill && ctx.interactive) {
+  if (installSkill && ctx.flags["yes"]) await installSkill("project");
+  else if (installSkill && ctx.interactive) {
     const scope = await ui.select("Install the acctx skill for AI agents?", ["project", "global", "skip"], (x) => x);
     if (scope === "project" || scope === "global") await installSkill(scope);
-  } else if (installSkill && ctx.flags["yes"]) await installSkill("project");
+  }
   return 0;
 }

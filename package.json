@@ -7,7 +7,7 @@
     "acctx": "./dist/src/cli.js"
   },
   "files": [
-    "dist",
+    "dist/src",
     "skills"
   ],
   "engines": {
@@ -16,7 +16,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && chmod +x dist/src/cli.js",
     "test": "pnpm build && node --test \"dist/test/**/*.test.js\"",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm test"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -33,5 +34,6 @@
     "account",
     "switch",
     "cli"
-  ]
+  ],
+  "author": "Gabriel San Martin"
 }

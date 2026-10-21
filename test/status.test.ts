@@ -60,3 +60,21 @@ test("acctx status prints lines, json, exit codes; errors without a project file
   assert.equal(j.ok, true); assert.equal(j.file, path.join(root, ".acctx.json"));
   assert.deepEqual(j.entries[0], { provider: "fake", selector: { account: "me@acme.com" }, profile: "work", label: "me@acme.com", state: "ok", candidates: [], hint: null });
 });
+
+test("status --json reports errors and mismatches as a JSON envelope", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const reg = { providers: [p], getProvider: () => p };
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".git"), { recursive: true });
+  let ctx = testContext({ store, env, cwd: root, flags: { json: true } });
+  assert.equal(await runCommand("status", ctx, reg), 1);
+  let j = JSON.parse(ctx.out.join("\n"));
+  assert.equal(j.ok, false); assert.equal(j.file, null); assert.match(j.error, /No \.acctx\.json/); assert.ok(j.hint);
+
+  await fs.writeFile(path.join(root, ".acctx.json"), JSON.stringify({ fake: { account: "me@acme.com" } }));
+  await saveProfile(store, "work", "me@acme.com");
+  ctx = testContext({ store, env, cwd: root, flags: { json: true } });
+  assert.equal(await runCommand("status", ctx, reg), 1);
+  j = JSON.parse(ctx.out.join("\n"));
+  assert.equal(j.ok, false); assert.equal(j.entries[0].state, "inactive");
+});

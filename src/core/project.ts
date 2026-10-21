@@ -11,6 +11,24 @@ export interface Selector { profile?: string; account?: string; tag?: string }
 export interface ProjectEntry { provider: string; selector: Selector }
 export interface ProjectConfig { file: string; entries: ProjectEntry[] }
 
+/** Render a file-sourced value for an error message: JSON-quoted, control/format chars stripped, max 64 chars. */
+export function safe(value: unknown): string {
+  const q = (JSON.stringify(value) ?? String(value)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "");
+  return q.length > 64 ? q.slice(0, 64) + "…" : q;
+}
+
+function checkName(kind: "profile" | "tag", value: string, where: string, file: string): void {
+  try { (kind === "profile" ? assertProfileName : assertTagName)(value); }
+  catch (e) {
+    if (e instanceof UserError) throw new UserError(`${file}: ${where}: Invalid ${kind === "profile" ? "profile name" : "tag"} ${safe(value)}.`, e.hint);
+    throw e;
+  }
+}
+
+async function realOr(p: string): Promise<string> {
+  return fs.realpath(p).catch(() => path.resolve(p));
+}
+
 function isInside(dir: string, ancestor: string): boolean {
   const rel = path.relative(ancestor, dir);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
@@ -18,8 +36,8 @@ function isInside(dir: string, ancestor: string): boolean {
 
 /** Nearest .acctx.json walking up from startDir; stops after the dir holding .git; never looks at $HOME or above. */
 export async function findProjectFile(startDir: string, home: string): Promise<string | null> {
-  let dir = path.resolve(startDir);
-  const homeAbs = path.resolve(home);
+  let dir = await realOr(path.resolve(startDir));
+  const homeAbs = await realOr(path.resolve(home));
   while (true) {
     if (dir === homeAbs || !isInside(dir, homeAbs) && isInside(homeAbs, dir)) return null; // reached $HOME or an ancestor of it
     const candidate = path.join(dir, PROJECT_FILE);
@@ -45,26 +63,26 @@ export async function loadProject(startDir: string, home: string, knownProviders
 
 export function parseProjectFile(text: string, file: string, knownProviders: readonly string[]): ProjectEntry[] {
   let raw: unknown;
-  try { raw = JSON.parse(text); } catch (e) { throw new UserError(`${file} is not valid JSON: ${(e as Error).message}`); }
+  try { raw = JSON.parse(text); } catch (e) { throw new UserError(`${file} is not valid JSON: ${safe((e as Error).message)}`); }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new UserError(`${file} must be an object keyed by provider id.`);
   const entries: ProjectEntry[] = [];
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (key === "$schema") continue;
-    if (!knownProviders.includes(key)) throw new UserError(`${file}: Unknown provider "${key}". Known providers: ${knownProviders.join(", ")}`);
+    if (!knownProviders.includes(key)) throw new UserError(`${file}: Unknown provider ${safe(key)}. Known providers: ${knownProviders.join(", ")}`);
     entries.push({ provider: key, selector: parseSelector(value, key, file) });
   }
   return entries;
 }
 
 function parseSelector(value: unknown, provider: string, file: string): Selector {
-  if (typeof value === "string") { assertProfileName(value); return { profile: value }; }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new UserError(`${file}: "${provider}" must be a string or an object.`);
+  if (typeof value === "string") { checkName("profile", value, `"${provider}"`, file); return { profile: value }; }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new UserError(`${file}: ${safe(provider)} must be a string or an object.`);
   const sel: Selector = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (!(SELECTOR_KEYS as readonly string[]).includes(k)) throw new UserError(`${file}: "${provider}": Unknown field "${k}".`, `Allowed: ${SELECTOR_KEYS.join(", ")}`);
+    if (!(SELECTOR_KEYS as readonly string[]).includes(k)) throw new UserError(`${file}: ${safe(provider)}: Unknown field ${safe(k)}.`, `Allowed: ${SELECTOR_KEYS.join(", ")}`);
     if (typeof v !== "string") throw new UserError(`${file}: "${provider}.${k}" must be a string.`);
-    if (k === "profile") assertProfileName(v);
-    else if (k === "tag") assertTagName(v);
+    if (k === "profile") checkName("profile", v, `"${provider}.profile"`, file);
+    else if (k === "tag") checkName("tag", v, `"${provider}.tag"`, file);
     else {
       if (v.length === 0 || v.length > 256) throw new UserError(`${file}: "${provider}.account" must be 1 to 256 characters.`);
       if (!/^[^\p{Cc}]+$/u.test(v) || v !== v.trim()) throw new UserError(`${file}: "${provider}.account" must be printable with no surrounding whitespace.`);

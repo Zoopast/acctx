@@ -34,8 +34,11 @@ export async function installSkill(ctx: Context, scope: "project" | "global", op
     const merged = mergeGuardHook(text);
     if (!merged.changed) ui.info(`${settings} already runs acctx guard.`);
     else {
-      await ensureDir(path.dirname(settings), 0o755);
-      await writeAtomic(settings, merged.text, 0o644);
+      await fs.mkdir(path.dirname(settings), { recursive: true, mode: 0o755 }); // does not chmod an existing dir
+      const st = await fs.lstat(settings).catch(() => null);
+      const dest = st?.isSymbolicLink() ? await fs.realpath(settings) : settings;
+      const mode = st ? (st.isSymbolicLink() ? (await fs.stat(dest)).mode : st.mode) & 0o777 : 0o644;
+      await writeAtomic(dest, merged.text, mode);
       ui.success(`Added a PreToolUse hook (Bash → acctx guard) to ${settings}`);
       ui.hint("It blocks provider CLI commands when the project's accounts are not active. Remove the entry from that file to disable it.");
     }

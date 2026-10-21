@@ -86,3 +86,29 @@ test("resolveSelector matches every selector; account is case-insensitive", () =
   assert.deepEqual(resolveSelector({ account: "nobody@x" }, profiles), { kind: "none" });
   assert.equal(describeSelector({ account: "dev@acme.com", tag: "team" }), "account dev@acme.com, tag team");
 });
+
+test("file-sourced strings are sanitized in errors and the path is always present", () => {
+  const evil = "\u001b[31mEVIL\u001b]52;c;aGk=\u0007";
+  const f = "/p/.acctx.json";
+  const clean = (e: unknown) => {
+    const msg = (e as Error).message;
+    assert.ok(!msg.includes("\u001b") && !msg.includes("\u0007"), msg);
+    assert.match(msg, /EVIL/); assert.ok(msg.includes(f), msg);
+    return true;
+  };
+  assert.throws(() => parseProjectFile(JSON.stringify({ [evil]: "x" }), f, KNOWN), clean);
+  assert.throws(() => parseProjectFile(JSON.stringify({ vercel: { [evil]: "x" } }), f, KNOWN), clean);
+  assert.throws(() => parseProjectFile(JSON.stringify({ vercel: evil }), f, KNOWN), clean);
+  assert.throws(() => parseProjectFile(JSON.stringify({ vercel: { tag: evil } }), f, KNOWN), clean);
+  assert.throws(() => parseProjectFile(JSON.stringify({ vercel: "x".repeat(200) + "\u001b" }), f, KNOWN), (e) => (e as Error).message.length < 200 && /…/.test((e as Error).message));
+});
+
+test("findProjectFile stops at a symlinked $HOME", async () => {
+  const real = await tmpDir();
+  const link = (await tmpDir()) + "-home2";
+  await fs.symlink(real, link);
+  await fs.mkdir(path.join(real, "sub"), { recursive: true });
+  await fs.writeFile(path.join(real, ".acctx.json"), "{}");
+  assert.equal(await findProjectFile(path.join(link, "sub"), link), null);
+  assert.equal(await findProjectFile(path.join(real, "sub"), link), null);
+});

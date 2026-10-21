@@ -70,3 +70,33 @@ test("skill install --global needs --yes when not interactive; skill show prints
   assert.equal(await runCommand("skill", ctx, reg), 0);
   assert.match(ctx.out.join("\n"), /^---\nname: acctx/);
 });
+
+test("skill install --hook keeps existing dir/file modes and follows a settings.json symlink", async () => {
+  const { home, store, env } = await setup();
+  const root = path.join(home, "app");
+  await fs.mkdir(path.join(root, ".claude"), { recursive: true });
+  await fs.chmod(path.join(root, ".claude"), 0o700);
+  const settings = path.join(root, ".claude", "settings.json");
+  await fs.writeFile(settings, "{}"); await fs.chmod(settings, 0o600);
+  let ctx = testContext({ store, env, cwd: root, args: ["install"], flags: { hook: true, agent: "universal" } });
+  assert.equal(await runCommand("skill", ctx, reg), 0);
+  assert.equal((await fs.stat(path.join(root, ".claude"))).mode & 0o777, 0o700);
+  assert.equal((await fs.stat(settings)).mode & 0o777, 0o600);
+  assert.match(await fs.readFile(settings, "utf8"), /acctx guard/);
+
+  const root2 = path.join(home, "app2");
+  await fs.mkdir(path.join(root2, ".claude"), { recursive: true });
+  const target = path.join(home, "dotfiles-settings.json");
+  await fs.writeFile(target, "{}");
+  await fs.symlink(target, path.join(root2, ".claude", "settings.json"));
+  ctx = testContext({ store, env, cwd: root2, args: ["install"], flags: { hook: true, agent: "universal" } });
+  assert.equal(await runCommand("skill", ctx, reg), 0);
+  assert.ok((await fs.lstat(path.join(root2, ".claude", "settings.json"))).isSymbolicLink());
+  assert.match(await fs.readFile(target, "utf8"), /acctx guard/);
+});
+
+test("mergeGuardHook refuses unexpected hooks shapes instead of reshaping them", () => {
+  assert.throws(() => mergeGuardHook('{"hooks": []}'), /unexpected shape/);
+  assert.throws(() => mergeGuardHook('{"hooks": {"PreToolUse": {}}}'), /unexpected shape/);
+  assert.throws(() => mergeGuardHook('{"hooks": {"PreToolUse": [{"matcher":"Bash","hooks":{}}]}}'), /unexpected shape/);
+});
