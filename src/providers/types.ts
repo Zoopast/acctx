@@ -18,12 +18,38 @@ export interface Identity {
   details?: Record<string, string>;
 }
 
+export interface VerifyResult { ok: boolean; label?: string; reason?: string }
+
+/** Human explanation of how a provider keeps its login; shown by `acctx providers`. */
+export interface StorageInfo {
+  /** One line: what the CLI writes and where. */
+  summary: string;
+  /** Location pattern with env placeholders, e.g. "$XDG_DATA_HOME/com.vercel.cli/auth.json". */
+  location: string;
+  /** How `acctx add` obtains a new login. */
+  login: string;
+  /** How acctx labels and checks a profile. */
+  identity: string;
+  /** Env vars the CLI reads instead of the file; if set, switching has no effect. */
+  overrideEnv: string[];
+  caveats: string[];
+  /** What was actually exercised against the real CLI, and where. */
+  verified: string;
+}
+
 export interface Provider {
   id: string;
   displayName: string;
   /** One-line install hint shown when the provider CLI is missing. */
   installHint: string;
+  storage: StorageInfo;
   files(env: Env): CredentialFile[];
+  /**
+   * Some CLIs keep files in a nested layout under a config root (wrangler:
+   * .wrangler/config/default.toml). Map flat profile file names to their
+   * relative path under that root so the core can stage a native layout.
+   */
+  layout?: Record<string, string>;
   /**
    * isolated: a new login can be made into a scratch dir without touching live files.
    * in-place: the provider's CLI only logs into the live location; acctx stashes first.
@@ -34,10 +60,13 @@ export interface Provider {
   loginIsolated?(dir: string, env: Env): Promise<void>;
   loginInPlace?(env: Env): Promise<void>;
   /**
-   * Offline identity fingerprint (e.g. a user id) read from credential files
-   * without any network call. `paths` maps file name to absolute path. Used to
-   * detect that the live login no longer belongs to the active profile.
-   * Return null when the provider has no safe non-secret identifier.
+   * Sanity-check captured files right after a capture. Return a problem
+   * description (e.g. "token is in the OS keyring, not in the file") or null.
+   */
+  validateFiles?(dir: string): Promise<string | null>;
+  /**
+   * Offline non-secret identifier from the files, for mismatch detection.
+   * `paths` maps file name to absolute path. Null when none exists.
    */
   fingerprint?(paths: Record<string, string>): Promise<string | null>;
   /**
@@ -54,4 +83,7 @@ export interface Provider {
   verify?(dir: string, env: Env): Promise<VerifyResult>;
 }
 
-export interface VerifyResult { ok: boolean; label?: string; reason?: string }
+/** Env overrides that remove the provider's token env vars from a child process. */
+export function withoutOverrides(p: Pick<Provider, "storage">): Record<string, undefined> {
+  return Object.fromEntries(p.storage.overrideEnv.map((k) => [k, undefined]));
+}

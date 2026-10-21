@@ -13,7 +13,7 @@ export interface SwitchOptions {
 }
 
 export class Switcher {
-  constructor(private readonly store: Store, private readonly env: Env) {}
+  constructor(private readonly store: Store, readonly env: Env) {}
 
   /** True when at least one required live file exists. */
   liveExists(provider: Provider): boolean {
@@ -66,6 +66,7 @@ export class Switcher {
       throw new UserError(`Profile ${provider.id}/${name} already exists.`, "Pick another name or remove it first.");
     }
     await this.captureLive(provider, name);
+    await this.validate(provider, name);
     const meta = await this.finalizeProfile(provider, name);
     // identify() may have refreshed the stored copy; the profile is now authoritative.
     await this.applyProfile(provider, name);
@@ -209,6 +210,7 @@ export class Switcher {
           if (exists(src)) await copyAtomic(src, path.join(dir, f.name), f.mode);
           else if (f.required) throw new UserError(`${provider.displayName} login did not produce ${f.name}.`, "The login may have been cancelled.");
         }
+        await this.validate(provider, finalName);
         const meta = await this.finalizeProfile(provider, finalName, identity);
         return { name: finalName, meta };
       } finally {
@@ -228,10 +230,26 @@ export class Switcher {
         `Your previous login is still saved. Restore it with: acctx use ${provider.id} <name>`);
     }
     await this.captureLive(provider, name);
+    await this.validate(provider, name);
     const meta = await this.finalizeProfile(provider, name);
     await this.applyProfile(provider, name);
     await this.store.setActive(provider.id, name);
     return { name, meta };
+  }
+
+  /** Provider sanity check on captured files; removes the profile and throws when it fails. */
+  private async validate(provider: Provider, name: string): Promise<void> {
+    if (!provider.validateFiles) return;
+    const problem = await provider.validateFiles(this.store.profileDir(provider.id, name));
+    if (problem) {
+      await this.store.removeProfile(provider.id, name);
+      throw new UserError(`Cannot save ${provider.displayName} login: ${problem}`);
+    }
+  }
+
+  /** Env vars set in this process that make the provider CLI ignore its credential file. */
+  activeOverrides(provider: Provider): string[] {
+    return provider.storage.overrideEnv.filter((k) => this.env.vars[k]);
   }
 
   private async pickName(provider: Provider, requested: string | undefined, identity: Identity | null): Promise<string> {

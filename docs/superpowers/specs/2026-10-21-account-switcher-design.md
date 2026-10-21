@@ -199,6 +199,33 @@ with `ACCTX_DEBUG=1`, after redaction).
 - `providers/convex`: same pattern with a fake `npx`.
 - CLI: argument parsing and exit codes.
 
+## Additions after v1 (2026-10-21, same day)
+
+- **Storage description.** Every provider carries a `storage` block (summary,
+  location pattern, login, identity, overrideEnv, caveats, verified) that
+  `acctx providers [id]` renders. A contract test iterates the registry and
+  fails on any empty field or a `loginMode` without its method, so a new
+  provider cannot be registered half-described.
+- **Native layouts.** Providers whose CLI needs nested paths under a config
+  root (wrangler) declare `layout`; `withNativeLayout()` stages the flat
+  profile in a temp root, runs the CLI, and copies changed files back.
+- **Env overrides.** `storage.overrideEnv` lists variables such as `GH_TOKEN`
+  that make the CLI ignore its file. `use`, `current`, `add` and `import`
+  warn when one is set, and every child process acctx runs for identify /
+  verify / login has them removed so a stale export cannot fake a result.
+- **validateFiles.** Providers can reject a capture (gh: token in the OS
+  keyring, so `hosts.yml` has no `oauth_token`). The profile is removed and
+  the user told how to re-login.
+- **Providers:** GitHub (isolated via `GH_CONFIG_DIR`), Supabase (in place,
+  token passed to `whoami` through the environment, never argv), Cloudflare
+  wrangler (isolated via `XDG_CONFIG_HOME` + layout staging; login flow not
+  verified). Clerk was evaluated and skipped: its config holds only a user id
+  and the token is kept elsewhere (keyring).
+- **UI.** One `ui.ts`: data on stdout, status on stderr (so `--json` and
+  pipes stay clean), ✓/✗/● symbols, color only on a TTY honoring `NO_COLOR`,
+  styled help, arrow-key picker for `use` (numbered fallback, Esc cancels,
+  Ctrl-C exits 130), and a confirmation on interactive `remove`.
+
 ## Out of scope (v1)
 
 OS keyring backend, team switching inside one account (`vercel switch` already
