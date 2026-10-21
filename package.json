@@ -1,5 +1,5 @@
 {
-  "name": "account-switcher",
+  "name": "acctx",
   "version": "0.1.0",
   "description": "acctx: switch between accounts for developer CLIs (Vercel, Convex, ...)",
   "type": "module",
@@ -23,7 +23,15 @@
     "typescript": "^5.6.0"
   },
   "license": "MIT",
-  "dependencies": {
-    "account-switcher": "link:"
-  }
+  "keywords": [
+    "vercel",
+    "convex",
+    "github",
+    "supabase",
+    "cloudflare",
+    "clerk",
+    "account",
+    "switch",
+    "cli"
+  ]
 }

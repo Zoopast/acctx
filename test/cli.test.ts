@@ -14,7 +14,7 @@ test("parseArgs separates positionals and flags", () => {
 test("help text lists every command and stays free of ANSI when color is off", () => {
   const ui = createUi({ env: { NO_COLOR: "1" }, interactive: false, writeOut: () => {}, writeErr: () => {} });
   const h = helpText(ui);
-  for (const c of ["add", "import", "use", "list", "current", "check", "rename", "remove", "providers"]) assert.match(h, new RegExp(`\\b${c}\\b`));
+  for (const c of ["add", "import", "use", "list", "current", "check", "rename", "remove", "providers", "init", "status", "tag", "untag", "skill"]) assert.match(h, new RegExp(`\\b${c}\\b`));
   assert.doesNotMatch(h, /\x1b/);
 });
 
