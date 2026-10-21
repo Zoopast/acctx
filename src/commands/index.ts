@@ -4,13 +4,14 @@ import { UserError } from "../core/errors.js";
 import { formatList, formatListJson } from "../core/format.js";
 import { sym, type Ui } from "../core/ui.js";
 
-import { type Registry, statusCmd } from "./project.js";
+import { type Registry, statusCmd, useProject } from "./project.js";
+import { loadProject } from "../core/project.js";
 
 const COMMANDS: Array<[string, string, string]> = [
   ["add <provider> [name]", "Log into a new account and save it as a profile", ""],
   ["import <provider> <name>", "Save the account the CLI is currently logged into", ""],
   ["status", "Check the project's .acctx.json against the active accounts", "--json"],
-  ["use [provider] [name]", "Switch to a profile (interactive picker if omitted)", "--discard"],
+  ["use [provider] [name]", "Switch to a profile; with no args applies .acctx.json (or picker with --pick)", "--discard --pick"],
   ["list [provider]", "List saved profiles", "--json"],
   ["current [provider]", "Show the active profile(s)", ""],
   ["check [provider] [name]", "Verify saved logins are still valid, without switching", ""],
@@ -251,6 +252,10 @@ async function use(ctx: Context, reg: Registry): Promise<number> {
   const { ui } = ctx;
   let providerId = ctx.args[0];
   let name = ctx.args[1];
+  if (!providerId && !name && !ctx.flags["pick"]) {
+    const project = await loadProject(ctx.cwd, ctx.switcher.env.home, reg.providers.map((p) => p.id));
+    if (project) return useProject(ctx, reg, project);
+  }
   if (!providerId || !name) {
     const scope = providerId ? reg.getProvider(providerId).id : undefined;
     const profiles = await ctx.store.listProfiles(scope);
