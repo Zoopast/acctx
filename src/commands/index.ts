@@ -14,7 +14,7 @@ const COMMANDS: Array<[string, string, string]> = [
   ["current [provider]", "Show the active profile(s)", ""],
   ["check [provider] [name]", "Verify saved logins are still valid, without switching", ""],
   ["rename <provider> <old> <new>", "Rename a saved profile", ""],
-  ["remove <provider> <name>", "Delete a saved profile", "--force"],
+  ["remove <provider> <name>", "Delete a saved profile (asks; --force to skip, required when piped)", "--force"],
   ["providers [id]", "Supported providers and how each one stores its login", ""],
 ];
 
@@ -255,7 +255,8 @@ async function remove(ctx: Context, reg: Registry): Promise<number> {
   if (state.active[p.id] === name && !force) {
     throw new UserError(`${p.id}/${name} is the active profile.`, "Switch to another profile first, or pass --force (the live login stays as it is).");
   }
-  if (!force && ctx.interactive) {
+  if (!force) {
+    if (!ctx.interactive) throw new UserError("Refusing to delete without confirmation in non-interactive mode.", "Pass --force to delete without a prompt.");
     const ok = await ui.confirm(`Delete the saved login ${p.id}/${name}?`);
     if (!ok) { ui.info("Cancelled."); return 0; }
   }
