@@ -43,11 +43,10 @@ export function relativeTime(iso: string | undefined, now: Date): string {
 
 /** Shorten opaque ids like team_jBOk3W6v1yEoFzTXMZa7VzaJ → team_jBOk3W…VzaJ */
 export function shortId(v: string): string {
-  if (v.length <= 20) return v;
-  const m = /^([a-z]+_)(.+)$/i.exec(v);
-  const prefix = m?.[1] ?? "";
-  const body = m?.[2] ?? v;
-  return `${prefix}${body.slice(0, 6)}…${body.slice(-4)}`;
+  // Only opaque ids like team_jBOk3W6v1yEoFzTXMZa7VzaJ; human text is left alone.
+  const m = /^([a-z]+_)([A-Za-z0-9]{16,})$/.exec(v);
+  if (!m) return v;
+  return `${m[1]}${m[2]!.slice(0, 6)}…${m[2]!.slice(-4)}`;
 }
 
 function detailsOf(meta: ProfileMeta): string {
