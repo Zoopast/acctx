@@ -317,3 +317,22 @@ test("a symlinked config keeps its link and the target is updated; empty env fal
   const env = fakeEnv(home); env.vars = { AWS_CONFIG_FILE: "", AWS_SHARED_CREDENTIALS_FILE: "" };
   assert.equal(aws.files(env)[0]!.path, path.join(home, ".aws", "config"));
 });
+
+test("a keyless [default] stub in a profile removes the live default instead of being written", async () => {
+  const { store } = await setup();
+  const home = await liveHome();
+  const env = fakeEnv(home);
+  const sw = new Switcher(store, env);
+  await sw.importLive(aws, "a");
+  await aws.liveStore!(env).write({ config: Buffer.from("[default]\nregion = eu-central-1\n"), credentials: Buffer.from(`[default]\naws_access_key_id = AKIAEXAMPLE000000003\n`) });
+  await store.setActive("aws", null);
+  await sw.importLive(aws, "b");
+  await sw.use(aws, "a");
+  await fs.writeFile(path.join(store.profileDir("aws", "b"), "config"), "[default]\n");
+  await sw.use(aws, "b");
+  const cfg = await fs.readFile(path.join(home, ".aws", "config"), "utf8");
+  assert.equal(getSection(cfg, "default"), null);
+  assert.match(getSection(cfg, "profile work")!, /eu-west-1/);
+  assert.match(getSection(cfg, "sso-session corp")!, /sso_start_url/);
+  assert.match(getSection(await fs.readFile(path.join(home, ".aws", "credentials"), "utf8"), "default")!, /AKIAEXAMPLE000000003/);
+});

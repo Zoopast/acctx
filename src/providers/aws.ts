@@ -148,7 +148,7 @@ class AwsDefaultStore implements LiveStore {
       await this.update(configPath(this.env), (text) => {
         // An entry without a [default] section means "no default login": same as null.
         const { sections } = data ? splitSections(data.toString("utf8")) : { sections: [] as IniSection[] };
-        const def = sections.filter((s) => s.name === "default").pop();
+        const def = sections.filter((s) => s.name === "default" && hasKeys(s.body)).pop();
         let next = upsertSection(text, "[default]", def ? def.body : null);
         for (const s of sections) if (s.name.startsWith("sso-session ")) next = upsertSection(next, s.header, s.body);
         return next;
@@ -157,7 +157,7 @@ class AwsDefaultStore implements LiveStore {
     if ("credentials" in entries) {
       const data = entries["credentials"];
       await this.update(credsPath(this.env), (text) => {
-        const def = data ? splitSections(data.toString("utf8")).sections.filter((s) => s.name === "default").pop() : undefined;
+        const def = data ? splitSections(data.toString("utf8")).sections.filter((s) => s.name === "default" && hasKeys(s.body)).pop() : undefined;
         return upsertSection(text, "[default]", def ? def.body : null);
       });
     }
