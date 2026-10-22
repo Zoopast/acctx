@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setup, fakeProvider, writeLive, testContext } from "./helpers.js";
-import { entryStatus } from "../src/core/status.js";
+import { entryStatus, formatStatusLine } from "../src/core/status.js";
 import { runCommand } from "../src/commands/index.js";
 
 const now = "2026-01-01T00:00:00Z";
@@ -77,4 +77,37 @@ test("status --json reports errors and mismatches as a JSON envelope", async () 
   assert.equal(await runCommand("status", ctx, reg), 1);
   j = JSON.parse(ctx.out.join("\n"));
   assert.equal(j.ok, false); assert.equal(j.entries[0].state, "inactive");
+});
+
+test("hints and status lines for unresolved, ambiguous and override", async () => {
+  const { store, env } = await setup();
+  const p = fakeProvider();
+  const ctx = testContext({ store, env });
+  await saveProfile(store, "one", "me@acme.com");
+  await saveProfile(store, "two", "me@acme.com");
+  const un = await entryStatus(store, ctx.switcher, p, { profile: "nope" });
+  assert.match(un.hint!, /acctx add fake <name>/);
+  const amb = await entryStatus(store, ctx.switcher, p, { account: "me@acme.com" });
+  assert.match(amb.hint!, /one, two/);
+  env.vars["FAKE_TOKEN"] = "x";
+  const ov = await entryStatus(store, ctx.switcher, p, { profile: "one" });
+  assert.match(ov.hint!, /FAKE_TOKEN is set/);
+  for (const [e, word] of [[un, "unresolved"], [amb, "ambiguous"], [ov, "override"]] as const) {
+    const line = formatStatusLine(e, ctx.ui.s, 4);
+    assert.ok(line.includes(word), line);
+    assert.ok(!line.includes("\u001b"), line);
+  }
+});
+
+test("status --json on an empty project file returns the envelope", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const reg = { providers: [p], getProvider: () => p };
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".git"), { recursive: true });
+  await fs.writeFile(path.join(root, ".acctx.json"), "{}");
+  const ctx = testContext({ store, env, cwd: root, flags: { json: true } });
+  assert.equal(await runCommand("status", ctx, reg), 1);
+  const j = JSON.parse(ctx.out.join("\n"));
+  assert.equal(j.ok, false); assert.match(j.error, /lists no providers/);
+  assert.equal(j.file, path.join(await fs.realpath(root), ".acctx.json"));
 });

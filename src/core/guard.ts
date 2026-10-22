@@ -24,7 +24,11 @@ export function invokedClis(command: string, clis: readonly string[]): string[] 
       if (WRAPPERS.has(w)) {
         i++;
         if (WRAPPERS_WITH_FLAGS.has(w)) {
-          while (i < words.length && words[i]!.startsWith("-")) i += w === "nice" && words[i] === "-n" ? 2 : 1;
+          while (i < words.length && words[i]!.startsWith("-")) {
+            const f = words[i]!;
+            const takesValue = (w === "nice" && f === "-n") || ((w === "sudo" || w === "doas") && ["-u", "-g", "--user", "--group"].includes(f));
+            i += takesValue ? 2 : 1;
+          }
         }
         continue;
       }

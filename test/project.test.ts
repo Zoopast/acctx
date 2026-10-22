@@ -114,3 +114,44 @@ test("findProjectFile stops at a symlinked $HOME", async () => {
   assert.equal(await findProjectFile(path.join(link, "sub"), link), null);
   assert.equal(await findProjectFile(path.join(real, "sub"), link), null);
 });
+
+test("findProjectFile: a directory literally named ..foo under home is inside home", async () => {
+  const home = await tmpDir();
+  const dir = path.join(home, "..foo", "proj");
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(home, "..foo", ".acctx.json"), "{}");
+  assert.equal(await findProjectFile(dir, home), path.join(await fs.realpath(home), "..foo", ".acctx.json"));
+});
+
+test("findProjectFile: starting outside $HOME walks up to the git root; ancestors of $HOME return null", async () => {
+  const home = await tmpDir();
+  const outside = await tmpDir();
+  await fs.mkdir(path.join(outside, ".git"), { recursive: true });
+  await fs.mkdir(path.join(outside, "sub"), { recursive: true });
+  await fs.writeFile(path.join(outside, ".acctx.json"), "{}");
+  assert.equal(await findProjectFile(path.join(outside, "sub"), home), path.join(await fs.realpath(outside), ".acctx.json"));
+  assert.equal(await findProjectFile(path.dirname(home), home), null);
+});
+
+test("findProjectFile: .git as a file (worktree) still stops the walk", async () => {
+  const home = await tmpDir();
+  const wt = path.join(home, "wt");
+  await fs.mkdir(path.join(wt, "sub"), { recursive: true });
+  await fs.writeFile(path.join(wt, ".git"), "gitdir: /elsewhere\n");
+  await fs.writeFile(path.join(home, ".acctx.json"), "{}");
+  assert.equal(await findProjectFile(path.join(wt, "sub"), home), null);
+});
+
+test("loadProject rejects a directory named .acctx.json", async () => {
+  const { home, root } = await repo();
+  await fs.mkdir(path.join(root, ".acctx.json"));
+  await assert.rejects(loadProject(root, home, KNOWN), /not a regular file/);
+});
+
+test("findProjectFile finds a file owned by the current user (ownership guard is POSIX-only)", async (t) => {
+  if (typeof process.getuid !== "function") return t.skip("no getuid on this platform");
+  const { home, root } = await repo();
+  await fs.writeFile(path.join(root, ".acctx.json"), "{}");
+  assert.equal((await fs.lstat(path.join(root, ".acctx.json"))).uid, process.getuid());
+  assert.equal(await findProjectFile(root, home), path.join(await fs.realpath(root), ".acctx.json"));
+});

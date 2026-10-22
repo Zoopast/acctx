@@ -36,7 +36,7 @@ export const GUARD_HOOK = { matcher: "Bash", hooks: [{ type: "command", command:
 export function mergeGuardHook(settingsText: string | null): { text: string; changed: boolean } {
   let settings: Record<string, unknown> = {};
   if (settingsText !== null && settingsText.trim() !== "") {
-    try { settings = JSON.parse(settingsText); } catch (e) { throw new UserError(`settings.json is not valid JSON: ${(e as Error).message}`, "Fix it by hand, then run the install again."); }
+    try { settings = JSON.parse(settingsText); } catch { throw new UserError("settings.json is not valid JSON.", "Fix it by hand, then run the install again."); }
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new UserError("settings.json must be a JSON object.");
   }
   const shape = () => new UserError("settings.json hooks section has an unexpected shape; add the hook by hand.", 'Add {"matcher":"Bash","hooks":[{"type":"command","command":"acctx guard"}]} to hooks.PreToolUse.');

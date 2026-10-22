@@ -24,6 +24,9 @@ export async function installSkill(ctx: Context, scope: "project" | "global", op
     ui.info(`This writes:\n${targets.map((t) => "  " + t).join("\n")}`);
     if (!(await ui.confirm("Install the acctx skill globally?", true))) { ui.info("Skipped."); return; }
   }
+  // Validate settings.json before touching any file, so a bad one cannot leave a partial install.
+  const settings = path.join(scope === "project" ? ctx.cwd : home, ".claude", "settings.json");
+  const merged = opts.hook ? mergeGuardHook(exists(settings) ? await fs.readFile(settings, "utf8") : null) : null;
   for (const target of targets) {
     if (exists(target)) {
       const current = await fs.readFile(target, "utf8");
@@ -40,10 +43,7 @@ export async function installSkill(ctx: Context, scope: "project" | "global", op
     await writeAtomic(target, source, 0o644);
     ui.success(`Installed ${target}`);
   }
-  if (opts.hook) {
-    const settings = path.join(scope === "project" ? ctx.cwd : home, ".claude", "settings.json");
-    const text = exists(settings) ? await fs.readFile(settings, "utf8") : null;
-    const merged = mergeGuardHook(text);
+  if (merged) {
     if (!merged.changed) ui.info(`${settings} already runs acctx guard.`);
     else {
       await fs.mkdir(path.dirname(settings), { recursive: true, mode: 0o755 }); // does not chmod an existing dir

@@ -18,7 +18,7 @@ test("invokedClis finds provider CLIs only in command position", () => {
   assert.deepEqual(invokedClis("/usr/local/bin/vercel ls", CLIS), ["vercel"]);
   assert.deepEqual(invokedClis("", CLIS), []);
   for (const [cmd, want] of [
-    ["sudo vercel deploy", ["vercel"]], ["time vercel ls", ["vercel"]], ["env FOO=1 vercel ls", ["vercel"]], ["nohup vercel dev &", ["vercel"]],
+    ["sudo vercel deploy", ["vercel"]], ["sudo -u root vercel ls", ["vercel"]], ["sudo -g wheel vercel ls", ["vercel"]], ["doas -u root vercel ls", ["vercel"]], ["sudo --user root vercel ls", ["vercel"]], ["time vercel ls", ["vercel"]], ["env FOO=1 vercel ls", ["vercel"]], ["nohup vercel dev &", ["vercel"]],
     ["pnpm exec vercel ls", ["vercel"]], ["npm exec -- convex dev", ["convex"]], ["yarn wrangler whoami", ["wrangler"]], ["pnpm vercel ls", ["vercel"]],
     ["npx -y vercel ls", ["vercel"]], ["npx -p vercel vercel ls", ["vercel"]],
     ["if true; then vercel ls; fi", ["vercel"]], ["echo $(gh api user)", ["gh"]], ["(vercel ls)", ["vercel"]], ["sleep 1 & vercel ls", ["vercel"]],
@@ -58,4 +58,17 @@ test("guard allows non-Bash, unrelated commands, and projects without a file; bl
   await fs.writeFile(path.join(root, ".acctx.json"), "{bad");
   const broken = await run({ tool_name: "Bash", tool_input: { command: "fake deploy" }, cwd: root });
   assert.equal(broken.code, 2); assert.match(broken.err, /not valid JSON/);
+});
+
+test("guard writes nothing to stdout, and nothing at all when allowing", async () => {
+  const { home, store, env } = await setup();
+  const p = { ...fakeProvider(), cli: "fake" };
+  const reg = { providers: [p], getProvider: () => p };
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".git"), { recursive: true });
+  await fs.writeFile(path.join(root, ".acctx.json"), JSON.stringify({ fake: "work" }));
+  const call = async (command: string) => { const ctx = testContext({ store, env, cwd: root }); const code = await guardCmd(ctx, reg, async () => JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd: root })); return { code, ctx }; };
+  const blocked = await call("fake deploy");
+  assert.equal(blocked.code, 2); assert.deepEqual(blocked.ctx.out, []); assert.ok(blocked.ctx.err.length > 0);
+  const allowed = await call("ls");
+  assert.equal(allowed.code, 0); assert.deepEqual(allowed.ctx.out, []); assert.deepEqual(allowed.ctx.err, []);
 });

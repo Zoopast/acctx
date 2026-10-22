@@ -118,11 +118,30 @@ test("a failing entry does not stop later entries; ok entries are not re-switche
   assert.doesNotMatch(ctx.err.join("\n"), /fake2\s/);
 });
 
+test("ok entries are left untouched on disk", async () => {
+  const { home, store, env } = await setup();
+  const p1 = fakeProvider(), p2 = fake2();
+  const reg = { providers: [p1, p2], getProvider: (id: string) => (id === "fake2" ? p2 : p1) };
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".git"), { recursive: true });
+  await saveProfile(store, "work", "me@acme.com");
+  await saveProfile(store, "personal", "me@gmail.com");
+  await saveProfile2(store, "b", "b@x");
+  await store.setActive("fake", "personal"); await writeLive(home, { user: "me@gmail.com" });
+  await store.setActive("fake2", "b");
+  await fs.mkdir(path.join(home, ".fake2"), { recursive: true });
+  // marker field the saved profile copy lacks: a re-switch would overwrite the file and drop it
+  await fs.writeFile(path.join(home, ".fake2", "auth.json"), JSON.stringify({ user: "b@x", marker: 1 }));
+  await fs.writeFile(path.join(root, ".acctx.json"), JSON.stringify({ fake: "work", fake2: "b" }));
+  assert.equal(await runCommand("use", testContext({ store, env, cwd: root }), reg), 0);
+  assert.equal((await readLive(home)).user, "me@acme.com");
+  assert.deepEqual(await readLive2(home), { user: "b@x", marker: 1 });
+});
+
 test("empty .acctx.json errors like status", async () => {
   const { home, store, env } = await setup();
   const p = fakeProvider();
   const reg = { providers: [p], getProvider: () => p };
   const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".git"), { recursive: true });
   await fs.writeFile(path.join(root, ".acctx.json"), "{}");
-  await assert.rejects(runCommand("use", testContext({ store, env, cwd: root }), reg), /lists no providers/);
+  await assert.rejects(runCommand("use", testContext({ store, env, cwd: root }), reg), (e: any) => /lists no providers/.test(e.message) && /acctx init --force/.test(e.hint));
 });

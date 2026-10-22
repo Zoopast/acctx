@@ -90,7 +90,7 @@ export class Store {
     for (const t of tags) assertTagName(t);
     const meta = await this.requireMeta(provider, name);
     const next = [...new Set([...(meta.tags ?? []), ...tags.map((t) => t.toLowerCase())])].sort();
-    await this.writeMeta(provider, name, { ...meta, tags: next, updatedAt: new Date().toISOString() });
+    await this.writeMeta(provider, name, { ...meta, tags: next });
     return next;
   }
 
@@ -100,7 +100,7 @@ export class Store {
     const drop = new Set(tags.map((t) => t.toLowerCase()));
     const next = (meta.tags ?? []).filter((t) => !drop.has(t));
     const { tags: _old, ...rest } = meta;
-    await this.writeMeta(provider, name, { ...rest, ...(next.length ? { tags: next } : {}), updatedAt: new Date().toISOString() });
+    await this.writeMeta(provider, name, { ...rest, ...(next.length ? { tags: next } : {}) });
     return next;
   }
 

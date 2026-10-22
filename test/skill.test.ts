@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { setup, testContext } from "./helpers.js";
 import { runCommand } from "../src/commands/index.js";
@@ -134,4 +135,33 @@ test("init --force --yes keeps a locally edited SKILL.md (force applies to .acct
   assert.equal(await fs.readFile(target, "utf8"), "my edited skill\n");
   assert.match(ctx.err.join("\n"), /differs from the packaged skill; kept/);
   assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, ".acctx.json"), "utf8")), { fake: "work" });
+});
+
+test("skill install --hook with invalid settings.json fails before writing any skill file", async () => {
+  const { home, store, env } = await setup();
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".claude"), { recursive: true });
+  await fs.writeFile(path.join(root, ".claude", "settings.json"), "{nope");
+  const ctx = testContext({ store, env, cwd: root, args: ["install"], flags: { hook: true } });
+  await assert.rejects(runCommand("skill", ctx, reg), (e: Error) => /not valid JSON/.test(e.message) && !/Unexpected|position/.test(e.message));
+  assert.equal(existsSync(path.join(root, ".claude", "skills", "acctx", "SKILL.md")), false);
+  assert.equal(existsSync(path.join(root, ".agents", "skills", "acctx", "SKILL.md")), false);
+});
+
+test("skill install --hook twice leaves settings.json byte-identical", async () => {
+  const { home, store, env } = await setup();
+  const root = path.join(home, "app"); await fs.mkdir(root, { recursive: true });
+  const run = async () => { const ctx = testContext({ store, env, cwd: root, args: ["install"], flags: { hook: true } }); await runCommand("skill", ctx, reg); return ctx.err.join("\n"); };
+  await run();
+  const file = path.join(root, ".claude", "settings.json");
+  const before = await fs.readFile(file);
+  assert.match(await run(), /already runs acctx guard/);
+  assert.ok(before.equals(await fs.readFile(file)));
+});
+
+test("skill install --global --hook --yes writes the skill and settings under the fake home", async () => {
+  const { home, store, env } = await setup();
+  const ctx = testContext({ store, env, args: ["install"], flags: { global: true, hook: true, yes: true } });
+  assert.equal(await runCommand("skill", ctx, reg), 0);
+  assert.ok((await fs.stat(path.join(home, ".claude", "skills", "acctx", "SKILL.md"))).isFile());
+  assert.match(await fs.readFile(path.join(home, ".claude", "settings.json"), "utf8"), /acctx guard/);
 });

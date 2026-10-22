@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import { UserError } from "./errors.js";
 import { assertProfileName, assertTagName, type ProfileMeta } from "./store.js";
@@ -31,7 +32,7 @@ async function realOr(p: string): Promise<string> {
 
 function isInside(dir: string, ancestor: string): boolean {
   const rel = path.relative(ancestor, dir);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  return rel === "" || (rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel));
 }
 
 /** Nearest .acctx.json walking up from startDir; stops after the dir holding .git; never looks at $HOME or above. */
@@ -42,7 +43,8 @@ export async function findProjectFile(startDir: string, home: string): Promise<s
     if (dir === homeAbs || !isInside(dir, homeAbs) && isInside(homeAbs, dir)) return null; // reached $HOME or an ancestor of it
     const candidate = path.join(dir, PROJECT_FILE);
     const st = await fs.lstat(candidate).catch(() => null);
-    if (st) return candidate;
+    // POSIX: a file owned by another user is not ours to trust; walk on as if absent
+    if (st && (process.getuid === undefined || st.uid === process.getuid())) return candidate;
     const git = await fs.lstat(path.join(dir, ".git")).catch(() => null);
     if (git) return null; // repo root examined, stop
     const parent = path.dirname(dir);
@@ -54,10 +56,21 @@ export async function findProjectFile(startDir: string, home: string): Promise<s
 export async function loadProject(startDir: string, home: string, knownProviders: readonly string[]): Promise<ProjectConfig | null> {
   const file = await findProjectFile(startDir, home);
   if (!file) return null;
-  const st = await fs.lstat(file);
-  if (!st.isFile()) throw new UserError(`${file} is not a regular file.`, "acctx only reads a plain .acctx.json (no symlinks).");
-  if (st.size > MAX_BYTES) throw new UserError(`${file} is too large (${st.size} bytes; max ${MAX_BYTES}).`);
-  const text = await fs.readFile(file, "utf8");
+  const notRegular = () => new UserError(`${file} is not a regular file.`, "acctx only reads a plain .acctx.json (no symlinks).");
+  let handle;
+  try { handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "EMLINK") throw notRegular();
+    throw e;
+  }
+  let text: string;
+  try {
+    const st = await handle.stat();
+    if (!st.isFile()) throw notRegular();
+    if (st.size > MAX_BYTES) throw new UserError(`${file} is too large (${st.size} bytes; max ${MAX_BYTES}).`);
+    text = await handle.readFile("utf8");
+  } finally { await handle.close(); }
   return { file, entries: parseProjectFile(text, file, knownProviders) };
 }
 

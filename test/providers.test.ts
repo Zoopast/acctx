@@ -12,7 +12,10 @@ import { fakeEnv, tmpDir } from "./helpers.js";
 
 test("every provider satisfies the contract (scalability guard)", () => {
   const ids = new Set<string>();
+  const clis = new Set<string>();
   for (const p of providers) {
+    assert.ok(p.cli.trim(), `${p.id}: cli empty`);
+    assert.ok(!clis.has(p.cli), `duplicate cli ${p.cli}`); clis.add(p.cli);
     assert.ok(!ids.has(p.id), `duplicate id ${p.id}`); ids.add(p.id);
     assert.match(p.id, /^[a-z][a-z0-9-]*$/);
     for (const k of ["summary", "location", "login", "identity", "verified"] as const) assert.ok(p.storage[k].trim(), `${p.id}: storage.${k} empty`);

@@ -37,9 +37,9 @@ export async function entryStatus(store: Store, switcher: Switcher, provider: Pr
   return { ...entry, state: "ok", hint: null };
 }
 
-export async function projectStatus(store: Store, switcher: Switcher, reg: { getProvider(id: string): Provider }, project: ProjectConfig): Promise<StatusEntry[]> {
+export async function projectStatus(store: Store, switcher: Switcher, reg: { getProvider(id: string): Provider }, project: ProjectConfig, only?: Set<string>): Promise<StatusEntry[]> {
   const out: StatusEntry[] = [];
-  for (const e of project.entries) out.push(await entryStatus(store, switcher, reg.getProvider(e.provider), e.selector));
+  for (const e of project.entries) if (!only || only.has(e.provider)) out.push(await entryStatus(store, switcher, reg.getProvider(e.provider), e.selector));
   return out;
 }
 

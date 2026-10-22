@@ -2,7 +2,7 @@ import type { Context } from "../cli.js";
 import { UserError } from "../core/errors.js";
 import { loadProject } from "../core/project.js";
 import { invokedClis, parseHookPayload } from "../core/guard.js";
-import { entryStatus, formatStatusLine } from "../core/status.js";
+import { projectStatus, formatStatusLine } from "../core/status.js";
 import { redact } from "../core/redact.js";
 import type { Registry } from "./project.js";
 
@@ -18,10 +18,8 @@ export async function guardCmd(ctx: Context, reg: Registry, readStdin: () => Pro
     const project = await loadProject(payload.cwd ?? ctx.cwd, ctx.switcher.env.home, reg.providers.map((p) => p.id));
     if (!project) return 0;
     const wanted = new Set(hit.map((c) => byCli.get(c)!.id));
-    const entries = project.entries.filter((e) => wanted.has(e.provider));
-    if (entries.length === 0) return 0;
-    const statuses = [];
-    for (const e of entries) statuses.push(await entryStatus(ctx.store, ctx.switcher, reg.getProvider(e.provider), e.selector));
+    const statuses = await projectStatus(ctx.store, ctx.switcher, reg, project, wanted);
+    if (statuses.length === 0) return 0;
     const bad = statuses.filter((s) => s.state !== "ok");
     if (bad.length === 0) return 0;
     const w = Math.max(...bad.map((s) => s.provider.length));

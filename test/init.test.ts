@@ -52,7 +52,7 @@ test("init --from-active warns about unreadable metadata, aligns output, and --y
   await fs.rm(path.join(store.profileDir("fakelonger", "dev"), "meta.json"));
 
   const installed: string[] = [];
-  const { initCmd } = await import("../src/commands/project.js");
+  const { initCmd } = await import("../src/commands/init.js");
   let ctx = testContext({ store, env, cwd: root, flags: { "from-active": true, yes: true } });
   assert.equal(await initCmd(ctx, reg, async (scope) => { installed.push(scope); }), 0);
   assert.deepEqual(installed, ["project"]);

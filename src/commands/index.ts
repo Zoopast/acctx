@@ -3,9 +3,9 @@ import type { Provider } from "../providers/types.js";
 import { UserError } from "../core/errors.js";
 import { formatList, formatListJson } from "../core/format.js";
 import { sym, type Ui } from "../core/ui.js";
-
-import { type Registry, statusCmd, useProject, initCmd } from "./project.js";
 import { loadProject } from "../core/project.js";
+import { type Registry, statusCmd, useProject } from "./project.js";
+import { initCmd } from "./init.js";
 import { installSkill, skillCmd } from "./skill.js";
 import { guardCmd } from "./guard.js";
 
