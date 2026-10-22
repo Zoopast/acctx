@@ -68,6 +68,8 @@ test("parseProjectFile: errors name the path and the problem", () => {
   bad({ vercel: { profile: "bad name" } }, /Invalid profile name/);
   bad({ vercel: { tag: "bad tag" } }, /Invalid tag/);
   bad({ vercel: { account: "a\nb" } }, /account.*printable/);
+  bad({ vercel: { account: "me\u202eacme" } }, /account.*printable/);
+  bad({ vercel: { account: "me\u200bacme" } }, /account.*printable/);
   bad({ vercel: { account: "x".repeat(257) } }, /account.*256/);
 });
 

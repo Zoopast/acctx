@@ -36,7 +36,9 @@ export async function installSkill(ctx: Context, scope: "project" | "global", op
     else {
       await fs.mkdir(path.dirname(settings), { recursive: true, mode: 0o755 }); // does not chmod an existing dir
       const st = await fs.lstat(settings).catch(() => null);
-      const dest = st?.isSymbolicLink() ? await fs.realpath(settings) : settings;
+      const dest = st?.isSymbolicLink()
+        ? await fs.realpath(settings).catch(() => { throw new UserError(`${settings} is a symlink to a missing file.`, "Fix or remove the link, then run the install again."); })
+        : settings;
       const mode = st ? (st.isSymbolicLink() ? (await fs.stat(dest)).mode : st.mode) & 0o777 : 0o644;
       await writeAtomic(dest, merged.text, mode);
       ui.success(`Added a PreToolUse hook (Bash → acctx guard) to ${settings}`);

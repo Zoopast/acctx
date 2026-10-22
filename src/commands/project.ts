@@ -122,7 +122,8 @@ export async function initCmd(ctx: Context, reg: Registry, installSkill?: (scope
   }
   await writeProjectFile(file, body);
   ui.success(`Wrote ${ui.s.bold(file)}`);
-  for (const [id, sel] of Object.entries(body)) ui.out(`  ${ui.s.cyan(id)}  ${typeof sel === "string" ? `profile ${sel}` : Object.entries(sel).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  const w = Math.max(...Object.keys(body).map((id) => id.length));
+  for (const [id, sel] of Object.entries(body)) ui.out(`  ${ui.s.cyan(id.padEnd(w))}  ${typeof sel === "string" ? `profile ${sel}` : Object.entries(sel).map(([k, v]) => `${k} ${v}`).join(", ")}`);
   ui.hint("Commit it (it holds no secrets). Check it any time with: acctx status");
   if (installSkill && ctx.flags["yes"]) await installSkill("project");
   else if (installSkill && ctx.interactive) {

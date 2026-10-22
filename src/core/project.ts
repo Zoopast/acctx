@@ -85,7 +85,7 @@ function parseSelector(value: unknown, provider: string, file: string): Selector
     else if (k === "tag") checkName("tag", v, `"${provider}.tag"`, file);
     else {
       if (v.length === 0 || v.length > 256) throw new UserError(`${file}: "${provider}.account" must be 1 to 256 characters.`);
-      if (!/^[^\p{Cc}]+$/u.test(v) || v !== v.trim()) throw new UserError(`${file}: "${provider}.account" must be printable with no surrounding whitespace.`);
+      if (!/^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$/u.test(v) || v !== v.trim()) throw new UserError(`${file}: "${provider}.account" must be printable (no control or invisible format characters) with no surrounding whitespace.`);
     }
     sel[k as keyof Selector] = v;
   }
