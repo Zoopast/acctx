@@ -87,7 +87,7 @@ export function parseKeys(body: string): Record<string, string> {
   for (const line of body.split(/\r?\n/)) {
     if (!line.trim() || /^\s/.test(line)) continue;
     if (line.startsWith("#") || line.startsWith(";")) continue;
-    const eq = line.indexOf("=");
+    const eq = line.search(/[=:]/);
     if (eq <= 0) continue;
     const key = line.slice(0, eq).trim().toLowerCase();
     if (key) out[key] = line.slice(eq + 1).trim();
@@ -95,11 +95,13 @@ export function parseKeys(body: string): Record<string, string> {
   return out;
 }
 
+const eolOf = (text: string): string => (text.includes("\r\n") ? "\r\n" : "\n");
+
 function configPath(env: Env): string {
-  return env.vars["AWS_CONFIG_FILE"] ?? path.join(env.home, ".aws", "config");
+  return env.vars["AWS_CONFIG_FILE"] || path.join(env.home, ".aws", "config");
 }
 function credsPath(env: Env): string {
-  return env.vars["AWS_SHARED_CREDENTIALS_FILE"] ?? path.join(env.home, ".aws", "credentials");
+  return env.vars["AWS_SHARED_CREDENTIALS_FILE"] || path.join(env.home, ".aws", "credentials");
 }
 
 async function readText(p: string): Promise<string> {
@@ -123,18 +125,20 @@ class AwsDefaultStore implements LiveStore {
   async read(): Promise<Record<string, Buffer>> {
     const out: Record<string, Buffer> = {};
     const configText = await readText(configPath(this.env));
+    const credsText = await readText(credsPath(this.env));
     const cfg = getSection(configText, "default");
-    const cred = getSection(await readText(credsPath(this.env)), "default");
+    const cred = getSection(credsText, "default");
     if (cfg !== null) {
-      let text = `[default]\n${cfg}`;
+      const eol = eolOf(configText);
+      let text = `[default]${eol}${cfg}`;
       const sso = parseKeys(cfg)["sso_session"];
       const ssoBody = sso ? getSection(configText, `sso-session ${sso}`) : null;
-      if (sso && ssoBody !== null) text += `${text.endsWith("\n") ? "" : "\n"}\n[sso-session ${sso}]\n${ssoBody}`;
+      if (sso && ssoBody !== null) text += `${text.endsWith("\n") ? "" : eol}${eol}[sso-session ${sso}]${eol}${ssoBody}`;
       out["config"] = Buffer.from(text);
     } else if (cred !== null) {
       out["config"] = Buffer.from("[default]\n");
     }
-    if (cred !== null) out["credentials"] = Buffer.from(`[default]\n${cred}`);
+    if (cred !== null) out["credentials"] = Buffer.from(`[default]${eolOf(credsText)}${cred}`);
     return out;
   }
 
@@ -142,11 +146,10 @@ class AwsDefaultStore implements LiveStore {
     if ("config" in entries) {
       const data = entries["config"];
       await this.update(configPath(this.env), (text) => {
-        if (data === null || data === undefined) return upsertSection(text, "[default]", null);
-        let next = text;
-        const { sections } = splitSections(data.toString("utf8"));
+        // An entry without a [default] section means "no default login": same as null.
+        const { sections } = data ? splitSections(data.toString("utf8")) : { sections: [] as IniSection[] };
         const def = sections.filter((s) => s.name === "default").pop();
-        if (def) next = upsertSection(next, "[default]", def.body);
+        let next = upsertSection(text, "[default]", def ? def.body : null);
         for (const s of sections) if (s.name.startsWith("sso-session ")) next = upsertSection(next, s.header, s.body);
         return next;
       });
@@ -154,14 +157,17 @@ class AwsDefaultStore implements LiveStore {
     if ("credentials" in entries) {
       const data = entries["credentials"];
       await this.update(credsPath(this.env), (text) => {
-        if (data === null || data === undefined) return upsertSection(text, "[default]", null);
-        const def = splitSections(data.toString("utf8")).sections.filter((s) => s.name === "default").pop();
-        return def ? upsertSection(text, "[default]", def.body) : text;
+        const def = data ? splitSections(data.toString("utf8")).sections.filter((s) => s.name === "default").pop() : undefined;
+        return upsertSection(text, "[default]", def ? def.body : null);
       });
     }
   }
 
   private async update(file: string, change: (text: string) => string): Promise<void> {
+    const link = await fs.lstat(file).catch(() => null);
+    if (link?.isSymbolicLink()) {
+      file = await fs.realpath(file).catch(() => { throw new UserError(`${file} is a symlink to a missing file.`, "Fix or remove the link first."); });
+    }
     const before = exists(file) ? await fs.readFile(file, "utf8") : null;
     const after = change(before ?? "");
     if (before === null && after === "") return;
@@ -173,6 +179,17 @@ class AwsDefaultStore implements LiveStore {
   }
 }
 
+const CREDENTIAL_KEYS = ["aws_access_key_id", "sso_session", "sso_account_id", "sso_start_url", "role_arn", "credential_process", "credential_source", "source_profile", "web_identity_token_file"];
+
+/** True when [default] of either file carries a credential-bearing key (not just region). */
+async function hasCredentialDefault(dir: string): Promise<boolean> {
+  for (const f of ["config", "credentials"]) {
+    const body = getSection(await readText(path.join(dir, f)), "default");
+    if (body !== null && CREDENTIAL_KEYS.some((k) => k in parseKeys(body))) return true;
+  }
+  return false;
+}
+
 async function hasDefault(dir: string): Promise<boolean> {
   for (const f of ["config", "credentials"]) {
     if (hasKeys(getSection(await readText(path.join(dir, f)), "default"))) return true;
@@ -181,7 +198,8 @@ async function hasDefault(dir: string): Promise<boolean> {
 }
 
 function stsEnv(dir: string): Record<string, string | undefined> {
-  return { ...withoutOverrides(aws), AWS_CONFIG_FILE: path.join(dir, "config"), AWS_SHARED_CREDENTIALS_FILE: path.join(dir, "credentials"), AWS_PAGER: "" };
+  const extra = Object.fromEntries(["AWS_SECURITY_TOKEN", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN"].map((k) => [k, undefined]));
+  return { ...withoutOverrides(aws), ...extra, AWS_EC2_METADATA_DISABLED: "true", AWS_CLI_AUTO_PROMPT: "off", AWS_CONFIG_FILE: path.join(dir, "config"), AWS_SHARED_CREDENTIALS_FILE: path.join(dir, "credentials"), AWS_PAGER: "" };
 }
 
 async function callerIdentity(dir: string, env: Env): Promise<{ ok: true; id: { Account?: string; Arn?: string } } | { ok: false; reason: string }> {
@@ -194,8 +212,8 @@ async function callerIdentity(dir: string, env: Env): Promise<{ ok: true; id: { 
   }
   if (res.code !== 0) {
     const err = res.stderr;
+    if (/InvalidClientTokenId|SignatureDoesNotMatch|ExpiredToken|UnrecognizedClientException/.test(err)) return { ok: false, reason: "credentials rejected by AWS" };
     if (/token.*expired|sso.*(expired|login)/i.test(err)) return { ok: false, reason: "SSO session expired; run: aws sso login" };
-    if (/InvalidClientTokenId|SignatureDoesNotMatch|ExpiredToken/.test(err)) return { ok: false, reason: "credentials rejected by AWS" };
     const first = err.split(/\r?\n/).map((l) => l.trim()).find((l) => l) ?? `aws exited with code ${res.code}`;
     return { ok: false, reason: first.slice(0, 120) };
   }
@@ -222,6 +240,9 @@ export const aws: Provider = {
     caveats: [
       "Static access keys in [default] are long-lived secrets; `acctx remove` deletes the local copy but does not deactivate the key in IAM.",
       "An [sso-session] block referenced by [default] is saved with the profile and merged back on switch; the SSO token cache under ~/.aws/sso/cache is shared and is not switched. If it has expired, `acctx check` says so and `aws sso login` refreshes it.",
+      "`[profile default]` in config is treated by the AWS CLI as the same profile as `[default]` and acctx does not manage it; rename it if present.",
+      "A `[default]` that chains through `source_profile`, `credential_process` or `role_arn` depends on named profiles that are not saved with the acctx profile, so `acctx check` may fail for it and no offline fingerprint is available.",
+      "A saved `[sso-session NAME]` block replaces the live block of the same name on switch.",
       "Tools that pin AWS_PROFILE in a .envrc or shell rc bypass the default section entirely; acctx warns when those variables are set.",
     ],
     verified: "Linux, aws-cli 2.36: import of a static-key [default], status, use (round trip), check via sts get-caller-identity.",
@@ -251,7 +272,8 @@ export const aws: Provider = {
   },
 
   async validateFiles(dir) {
-    return (await hasDefault(dir)) ? null : "no [default] section found";
+    if (await hasCredentialDefault(dir)) return null;
+    return (await hasDefault(dir)) ? "no credentials in [default] (region only)" : "no [default] section found";
   },
 
   async fingerprint(paths) {

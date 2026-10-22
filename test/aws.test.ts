@@ -53,10 +53,13 @@ test("ini helpers get, upsert, remove and parse without touching other sections"
   assert.equal(getSection(CONFIG, "profile  work")?.includes("eu-west-1"), true);
   assert.equal(getSection(CONFIG, "profile nope"), null);
   assert.deepEqual(parseKeys(body), { region: "us-east-1", sso_session: "corp", sso_account_id: "123456789012", sso_role_name: "Admin", s3: "" });
+  assert.deepEqual(parseKeys("a = 1\nb: 2\n"), { a: "1", b: "2" });
   assert.deepEqual(parseKeys("# c\n; c\nKey = A = B\n  nested = 1\n"), { key: "A = B" });
 
   const replaced = upsertSection(CONFIG, "[default]", "region = ap-south-1\n");
-  assert.equal(replaced.replace("region = ap-south-1\n", "").length < CONFIG.length, true);
+  const outside = (t: string): string => splitSections(t).sections.filter((s) => s.name !== "default").map((s) => s.header + s.body).join("");
+  assert.equal(outside(replaced), outside(CONFIG));
+  assert.equal(splitSections(replaced).preamble, splitSections(CONFIG).preamble);
   assert.equal(getSection(replaced, "default"), "region = ap-south-1\n\n");
   assert.equal(getSection(replaced, "profile work"), getSection(CONFIG, "profile work"));
   assert.ok(replaced.startsWith("# my aws config\n[default]\n"));
@@ -99,6 +102,7 @@ test("store reads default + referenced sso-session and writes only [default]", a
   assert.equal(getSection(cfg, "profile work"), getSection(CONFIG, "profile work"));
   assert.match(getSection(cfg, "default")!, /ap-south-1/);
   assert.match(getSection(cfg, "sso-session corp")!, /new\.example/);
+  assert.equal((cfg.match(/\[sso-session corp\]/g) ?? []).length, 1);
   const creds = await fs.readFile(path.join(home, ".aws", "credentials"), "utf8");
   assert.equal(getSection(creds, "default"), null);
   assert.match(getSection(creds, "work")!, new RegExp(KEY));
@@ -158,12 +162,13 @@ test("fingerprint uses the access key id, else the sso account/role, never the s
 test("identify and verify call sts get-caller-identity in an isolated environment", async () => {
   const dir = await tmpDir();
   const seen: Array<Record<string, string | undefined>> = [];
-  let mode: "ok" | "sso" | "bad" | "other" = "ok";
+  let mode: "ok" | "sso" | "bad" | "expired" | "other" = "ok";
   const env = fakeEnv("/h", (_cmd, _args, opts) => {
     seen.push(opts.env ?? {});
     if (mode === "ok") return { code: 0, stdout: JSON.stringify({ UserId: "AIDAEXAMPLE", Account: "123456789012", Arn: "arn:aws:iam::123456789012:user/alice" }), stderr: "" };
     if (mode === "sso") return { code: 255, stdout: "", stderr: "\nThe SSO session associated with this profile has expired or is otherwise invalid.\nTo refresh this SSO session run aws sso login\n" };
     if (mode === "bad") return { code: 254, stdout: "", stderr: "An error occurred (InvalidClientTokenId) when calling the GetCallerIdentity operation" };
+    if (mode === "expired") return { code: 254, stdout: "", stderr: "An error occurred (ExpiredToken) when calling the GetCallerIdentity operation: The security token included in the request is expired" };
     return { code: 1, stdout: "", stderr: "\n  something odd happened  \nsecond line" };
   });
   assert.deepEqual(await aws.identify(dir, env), { label: "user/alice", details: { account: "123456789012", arn: "arn:aws:iam::123456789012:user/alice" } });
@@ -172,13 +177,17 @@ test("identify and verify call sts get-caller-identity in an isolated environmen
   const e = seen[0]!;
   assert.equal(e["AWS_CONFIG_FILE"], path.join(dir, "config"));
   assert.ok(String(e["AWS_CONFIG_FILE"]).endsWith("/config"));
-  for (const k of aws.storage.overrideEnv) assert.ok(!e[k], `${k} must not be set`);
+  for (const k of [...aws.storage.overrideEnv, "AWS_SECURITY_TOKEN", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN"]) assert.ok(!e[k], `${k} must not be set`);
+  assert.equal(e["AWS_EC2_METADATA_DISABLED"], "true");
+  assert.equal(e["AWS_CLI_AUTO_PROMPT"], "off");
   assert.deepEqual(await aws.verify!(dir, env), { ok: true, label: "user/alice" });
 
   mode = "sso";
   assert.match((await aws.verify!(dir, env)).reason!, /aws sso login/);
   assert.equal(await aws.identify(dir, env), null);
   mode = "bad";
+  assert.equal((await aws.verify!(dir, env)).reason, "credentials rejected by AWS");
+  mode = "expired";
   assert.equal((await aws.verify!(dir, env)).reason, "credentials rejected by AWS");
   mode = "other";
   assert.equal((await aws.verify!(dir, env)).reason, "something odd happened");
@@ -209,6 +218,7 @@ test("core switches the default section end to end and leaves named profiles alo
   assert.match(getSection(cfg, "profile work")!, /eu-west-1/);
   assert.match(getSection(cfg, "default")!, /us-east-1/);
   assert.match(getSection(cfg, "sso-session corp")!, /sso_start_url/);
+  assert.equal((cfg.match(/\[sso-session corp\]/g) ?? []).length, 1);
   assert.match(getSection(creds, "default")!, /AKIAEXAMPLE000000002/);
   assert.match(getSection(creds, "work")!, new RegExp(KEY));
   assert.equal(await sw.liveFingerprint(aws), await sw.profileFingerprint(aws, "a"));
@@ -240,4 +250,70 @@ test("loginIsolated accepts a configured default and rejects an empty result", a
   await assert.rejects(aws.loginIsolated!(empty, fakeEnv("/h")), (e: unknown) => e instanceof UserError && /wrote nothing/.test(e.message));
   await assert.rejects(aws.loginIsolated!(empty, fakeEnv("/h", () => ({ code: 1, stdout: "", stderr: "" }))), /failed or was cancelled/);
   await assert.rejects(aws.loginIsolated!(empty, fakeEnv("/h", () => { throw Object.assign(new Error("x"), { code: "ENOENT" }); })), /not installed/);
+});
+
+test("headers are normalised and CRLF files stay CRLF through the store", async () => {
+  const text = "[ profile   work ]\nregion = x\n";
+  assert.equal(splitSections(text).sections[0]!.name, "profile work");
+  assert.equal(getSection(text, "profile work"), "region = x\n");
+  assert.equal(upsertSection(text, "[profile work]", null), "");
+
+  const home = await tmpDir();
+  await fs.mkdir(path.join(home, ".aws"));
+  const cf = path.join(home, ".aws", "config");
+  await fs.writeFile(cf, "[profile work]\r\nregion = a\r\n");
+  const store = aws.liveStore!(fakeEnv(home));
+  await store.write({ config: Buffer.from("[default]\r\nregion = b\r\nsso_session = c\r\n\r\n[sso-session c]\r\nsso_region = r\r\n") });
+  const out = await fs.readFile(cf, "utf8");
+  assert.ok(!/(?<!\r)\n/.test(out), "no bare LF");
+  assert.match((await store.read())["config"]!.toString(), /^\[default\]\r\n/);
+});
+
+test("writing an entry without [default] removes the live default (stale login never survives)", async () => {
+  const { store } = await setup();
+  // (a) live SSO default in config; profile has keys only in credentials
+  const home = await tmpDir();
+  await fs.mkdir(path.join(home, ".aws"));
+  const cfgFile = path.join(home, ".aws", "config"); const credFile = path.join(home, ".aws", "credentials");
+  await fs.writeFile(cfgFile, "# keep\n[default]\nsso_session = corp\nsso_account_id = 123456789012\nsso_role_name = Admin\n\n[sso-session corp]\nsso_start_url = https://example.awsapps.com/start\n\n[profile work]\nregion = z\n");
+  const env = fakeEnv(home);
+  const sw = new Switcher(store, env);
+  await sw.importLive(aws, "sso");
+  await aws.liveStore!(env).write({ config: null, credentials: Buffer.from(`[default]\naws_access_key_id = ${KEY}\naws_secret_access_key = ${SECRET}\n`) });
+  await store.setActive("aws", null);
+  await sw.importLive(aws, "keys");
+  await sw.use(aws, "sso");
+  await fs.writeFile(path.join(store.profileDir("aws", "keys"), "config"), ""); // present but no [default]
+  await sw.use(aws, "keys");
+  const cfg = await fs.readFile(cfgFile, "utf8");
+  assert.equal(getSection(cfg, "default"), null);
+  assert.match(getSection(cfg, "sso-session corp")!, /sso_start_url/);
+  assert.match(getSection(cfg, "profile work")!, /region = z/);
+  assert.match(cfg, /# keep/);
+  assert.match(getSection(await fs.readFile(credFile, "utf8"), "default")!, new RegExp(KEY));
+  // (b) back to sso: credentials default must disappear
+  await sw.use(aws, "sso");
+  assert.equal(getSection(await fs.readFile(credFile, "utf8"), "default"), null);
+  assert.match(getSection(await fs.readFile(cfgFile, "utf8"), "default")!, /sso_session = corp/);
+});
+
+test("validateFiles rejects a region-only default", async () => {
+  const dir = await tmpDir();
+  await fs.writeFile(path.join(dir, "config"), "[default]\nregion = us-east-1\n");
+  assert.equal(await aws.validateFiles!(dir), "no credentials in [default] (region only)");
+  await fs.writeFile(path.join(dir, "credentials"), `[default]\naws_access_key_id = ${KEY}\n`);
+  assert.equal(await aws.validateFiles!(dir), null);
+});
+
+test("a symlinked config keeps its link and the target is updated; empty env falls back", async () => {
+  const home = await tmpDir();
+  await fs.mkdir(path.join(home, ".aws"));
+  const target = path.join(home, "dotfiles-config");
+  await fs.writeFile(target, "[profile work]\nregion = a\n");
+  await fs.symlink(target, path.join(home, ".aws", "config"));
+  await aws.liveStore!(fakeEnv(home)).write({ config: Buffer.from("[default]\nregion = n\n") });
+  assert.ok((await fs.lstat(path.join(home, ".aws", "config"))).isSymbolicLink());
+  assert.match(getSection(await fs.readFile(target, "utf8"), "default")!, /region = n/);
+  const env = fakeEnv(home); env.vars = { AWS_CONFIG_FILE: "", AWS_SHARED_CREDENTIALS_FILE: "" };
+  assert.equal(aws.files(env)[0]!.path, path.join(home, ".aws", "config"));
 });

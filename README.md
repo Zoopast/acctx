@@ -3,7 +3,7 @@
 [![CI](https://github.com/Zoopast/acctx/actions/workflows/ci.yml/badge.svg)](https://github.com/Zoopast/acctx/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/acctx)](https://www.npmjs.com/package/acctx)
 
 Switch between accounts for developer CLIs. Supported: Vercel, Convex, GitHub
-(`gh`), Supabase, Cloudflare (`wrangler`), Clerk. Adding a provider is one
+(`gh`), Supabase, Cloudflare (`wrangler`), Clerk, AWS. Adding a provider is one
 small file.
 
 ```
@@ -128,7 +128,7 @@ import, check, list and use with a cloned profile (their login flows were not
 run); Cloudflare only for the config location and the logged-out `whoami`
 path, so its add/check/use are unverified; Clerk for import, check, list and
 use with a cloned profile on the Linux kernel-keyring backend (secret-service
-and macOS Keychain paths unexercised, login flow not run). Each provider's `verified` line in
+and macOS Keychain paths unexercised, login flow not run); AWS for import, status, check via `sts get-caller-identity` and a use round trip through a cloned profile, with the live files left byte-identical outside `[default]`. Each provider's `verified` line in
 `acctx providers <id>` says the same.
 
 ## Install

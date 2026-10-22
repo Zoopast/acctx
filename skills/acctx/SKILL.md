@@ -5,7 +5,7 @@ description: Use before running vercel, convex, gh, supabase, wrangler, clerk or
 
 # acctx: use the project's accounts
 
-acctx switches the logins of developer CLIs (Vercel, Convex, GitHub, Supabase, Cloudflare Wrangler, Clerk). A project declares which accounts it uses in `.acctx.json` at its root. Your job is to make sure those accounts are active before you run any of those CLIs.
+acctx switches the logins of developer CLIs (Vercel, Convex, GitHub, Supabase, Cloudflare Wrangler, Clerk, AWS). A project declares which accounts it uses in `.acctx.json` at its root. Your job is to make sure those accounts are active before you run any of those CLIs.
 
 ## Before running a provider CLI
 
