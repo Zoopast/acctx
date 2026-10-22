@@ -38,3 +38,29 @@ test("init without --from-active needs a terminal; with nothing active it says s
   ctx = testContext({ store, env, cwd: root, flags: { "from-active": true } });
   await assert.rejects(runCommand("init", ctx, reg), /No active profiles/);
 });
+
+test("init --from-active warns about unreadable metadata, aligns output, and --yes installs the skill without prompting", async () => {
+  const { home, store, env } = await setup();
+  const p = fakeProvider();
+  const long = { ...fakeProvider(), id: "fakelonger" };
+  const reg = { providers: [p, long], getProvider: (id: string) => (id === "fakelonger" ? long : p) };
+  const root = path.join(home, "app"); await fs.mkdir(root, { recursive: true });
+  await store.writeMeta("fake", "work", { label: "me@acme.com", identity: { label: "me@acme.com" }, createdAt: now, updatedAt: now });
+  await store.writeMeta("fakelonger", "dev", { label: "dev@acme.com", identity: { label: "dev@acme.com" }, createdAt: now, updatedAt: now });
+  await store.setActive("fake", "work");
+  await store.setActive("fakelonger", "dev");
+  await fs.rm(path.join(store.profileDir("fakelonger", "dev"), "meta.json"));
+
+  const installed: string[] = [];
+  const { initCmd } = await import("../src/commands/project.js");
+  let ctx = testContext({ store, env, cwd: root, flags: { "from-active": true, yes: true } });
+  assert.equal(await initCmd(ctx, reg, async (scope) => { installed.push(scope); }), 0);
+  assert.deepEqual(installed, ["project"]);
+  assert.match(ctx.err.join("\n"), /fakelonger: active profile "dev" has unreadable metadata; skipped/);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, ".acctx.json"), "utf8")), { fake: "work" });
+
+  await store.writeMeta("fakelonger", "dev", { label: "dev@acme.com", identity: { label: "dev@acme.com" }, createdAt: now, updatedAt: now });
+  ctx = testContext({ store, env, cwd: root, flags: { "from-active": true, force: true } });
+  assert.equal(await initCmd(ctx, reg), 0);
+  assert.deepEqual(ctx.out, ["  fake        profile work", "  fakelonger  profile dev"]);
+});

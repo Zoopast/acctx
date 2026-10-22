@@ -100,3 +100,11 @@ test("mergeGuardHook refuses unexpected hooks shapes instead of reshaping them",
   assert.throws(() => mergeGuardHook('{"hooks": {"PreToolUse": {}}}'), /unexpected shape/);
   assert.throws(() => mergeGuardHook('{"hooks": {"PreToolUse": [{"matcher":"Bash","hooks":{}}]}}'), /unexpected shape/);
 });
+
+test("skill install --hook reports a dangling settings.json symlink as a user error", async () => {
+  const { home, store, env } = await setup();
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".claude"), { recursive: true });
+  await fs.symlink(path.join(root, "missing.json"), path.join(root, ".claude", "settings.json"));
+  const ctx = testContext({ store, env, cwd: root, args: ["install"], flags: { hook: true } });
+  await assert.rejects(runCommand("skill", ctx, reg), /symlink to a missing file/);
+});
