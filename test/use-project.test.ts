@@ -135,6 +135,25 @@ test("ok entries are left untouched on disk", async () => {
   assert.equal(await runCommand("use", testContext({ store, env, cwd: root }), reg), 0);
   assert.equal((await readLive(home)).user, "me@acme.com");
   assert.deepEqual(await readLive2(home), { user: "b@x", marker: 1 });
+  const saved = JSON.parse(await fs.readFile(path.join(store.profileDir("fake2", "b"), "auth.json"), "utf8"));
+  assert.equal(saved.marker, undefined); // a re-switch would have captured the live file into the profile
+  assert.equal((await store.readMeta("fake2", "b"))?.lastUsedAt, undefined);
+});
+
+test("--discard lists the providers it will apply to before switching", async () => {
+  const { home, store, env } = await setup();
+  const p1 = fakeProvider(), p2 = fake2();
+  const reg = { providers: [p1, p2], getProvider: (id: string) => (id === "fake2" ? p2 : p1) };
+  const root = path.join(home, "app"); await fs.mkdir(path.join(root, ".git"), { recursive: true });
+  await saveProfile(store, "work", "me@acme.com");
+  await saveProfile2(store, "b", "b@x");
+  await fs.writeFile(path.join(root, ".acctx.json"), JSON.stringify({ fake: "work", fake2: "b" }));
+  const ctx = testContext({ store, env, cwd: root, flags: { discard: true } });
+  assert.equal(await runCommand("use", ctx, reg), 0);
+  const lines = ctx.err;
+  const w = lines.findIndex((l) => l.includes("--discard will replace unsaved logins for: fake, fake2"));
+  const ok = lines.findIndex((l) => l.includes("✓"));
+  assert.ok(w >= 0 && ok >= 0 && w < ok, lines.join("\n"));
 });
 
 test("empty .acctx.json errors like status", async () => {

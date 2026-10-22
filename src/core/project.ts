@@ -58,7 +58,7 @@ export async function loadProject(startDir: string, home: string, knownProviders
   if (!file) return null;
   const notRegular = () => new UserError(`${file} is not a regular file.`, "acctx only reads a plain .acctx.json (no symlinks).");
   let handle;
-  try { handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  try { handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "ELOOP" || code === "EMLINK") throw notRegular();
@@ -69,7 +69,10 @@ export async function loadProject(startDir: string, home: string, knownProviders
     const st = await handle.stat();
     if (!st.isFile()) throw notRegular();
     if (st.size > MAX_BYTES) throw new UserError(`${file} is too large (${st.size} bytes; max ${MAX_BYTES}).`);
-    text = await handle.readFile("utf8");
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    const { bytesRead } = await handle.read(buf, 0, MAX_BYTES + 1, 0);
+    if (bytesRead > MAX_BYTES) throw new UserError(`${file} is too large (more than ${MAX_BYTES} bytes).`);
+    text = buf.subarray(0, bytesRead).toString("utf8");
   } finally { await handle.close(); }
   return { file, entries: parseProjectFile(text, file, knownProviders) };
 }

@@ -48,6 +48,7 @@ export async function useProject(ctx: Context, reg: Registry, project: ProjectCo
   if (blocked.length) printStatus(ctx, project, blocked, { summarize: false });
   if (todo.length === 0) {
     if (!blocked.length) ui.info(`Everything in ${project.file} is already active; nothing to do.`);
+    else ui.warn(`${blocked.length} of ${entries.length} account(s) not applied.`);
     return blocked.length ? 1 : 0;
   }
   const discard = Boolean(ctx.flags["discard"]);

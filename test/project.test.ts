@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { tmpDir } from "./helpers.js";
 import { findProjectFile, parseProjectFile, loadProject, resolveSelector, describeSelector } from "../src/core/project.js";
 
@@ -115,12 +116,28 @@ test("findProjectFile stops at a symlinked $HOME", async () => {
   assert.equal(await findProjectFile(path.join(real, "sub"), link), null);
 });
 
-test("findProjectFile: a directory literally named ..foo under home is inside home", async () => {
-  const home = await tmpDir();
-  const dir = path.join(home, "..foo", "proj");
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(home, "..foo", ".acctx.json"), "{}");
-  assert.equal(await findProjectFile(dir, home), path.join(await fs.realpath(home), "..foo", ".acctx.json"));
+test("findProjectFile: a home directory named ..h is not confused with a parent reference", async () => {
+  const tmp = await tmpDir();
+  const home = path.join(tmp, "..h");
+  await fs.mkdir(home, { recursive: true });
+  await fs.writeFile(path.join(tmp, ".acctx.json"), "{}");
+  assert.equal(await findProjectFile(tmp, home), null); // start dir is an ancestor of home
+});
+
+test("loadProject does not hang on a FIFO named .acctx.json", async (t) => {
+  if (process.platform === "win32") return t.skip("no mkfifo");
+  const { home, root } = await repo();
+  try { execFileSync("mkfifo", [path.join(root, ".acctx.json")]); } catch { return t.skip("mkfifo unavailable"); }
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("loadProject hung on FIFO")), 2000); });
+  try { await assert.rejects(Promise.race([loadProject(root, home, KNOWN), timeout]), /not a regular file/); }
+  finally { clearTimeout(timer); }
+});
+
+test("loadProject rejects content over the cap even when stat reports a small size", async () => {
+  const { home, root } = await repo();
+  await fs.writeFile(path.join(root, ".acctx.json"), "{" + " ".repeat(64 * 1024) + "}");
+  await assert.rejects(loadProject(root, home, KNOWN), /too large/);
 });
 
 test("findProjectFile: starting outside $HOME walks up to the git root; ancestors of $HOME return null", async () => {
@@ -148,10 +165,14 @@ test("loadProject rejects a directory named .acctx.json", async () => {
   await assert.rejects(loadProject(root, home, KNOWN), /not a regular file/);
 });
 
-test("findProjectFile finds a file owned by the current user (ownership guard is POSIX-only)", async (t) => {
+test("findProjectFile skips a file not owned by the current user (POSIX)", async (t) => {
   if (typeof process.getuid !== "function") return t.skip("no getuid on this platform");
   const { home, root } = await repo();
   await fs.writeFile(path.join(root, ".acctx.json"), "{}");
-  assert.equal((await fs.lstat(path.join(root, ".acctx.json"))).uid, process.getuid());
+  const realUid = process.getuid();
   assert.equal(await findProjectFile(root, home), path.join(await fs.realpath(root), ".acctx.json"));
+  const orig = process.getuid;
+  process.getuid = () => realUid + 1;
+  try { assert.equal(await findProjectFile(root, home), null); }
+  finally { process.getuid = orig; }
 });
