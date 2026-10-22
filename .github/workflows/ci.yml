@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Pack and smoke-test the tarball
+        run: |
+          pnpm pack --out acctx.tgz
+          mkdir /tmp/smoke && tar -xzf acctx.tgz -C /tmp/smoke
+          node /tmp/smoke/package/dist/src/cli.js --version
+          node /tmp/smoke/package/dist/src/cli.js skill show | head -3
+          test ! -d /tmp/smoke/package/dist/test
