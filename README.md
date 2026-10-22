@@ -58,7 +58,7 @@ A value selects one local profile by `profile` (local name), `account` (the logi
 
 `acctx skill install` copies `skills/acctx/SKILL.md` into `.claude/skills/` and `.agents/skills/` (`--global` for every project, `--agent cursor,codex` to pick). The skill tells the agent to run `acctx status --json` before provider CLIs and `acctx use` on mismatch, and never to pass `--discard`/`--force` by itself.
 
-`acctx skill install --hook` also adds a Claude Code `PreToolUse` hook (`acctx guard`) that blocks `vercel`/`convex`/`gh`/`supabase`/`wrangler`/`clerk` commands while the project's accounts are not active. Other tools: `acctx skill show`, or `npx skills add <repo>`.
+`acctx skill install --hook` also adds a Claude Code `PreToolUse` hook (`acctx guard`) that blocks `vercel`/`convex`/`gh`/`supabase`/`wrangler`/`clerk` commands while the project's accounts are not active. Other tools: `acctx skill show`, or `npx skills add Zoopast/acctx`.
 
 ## Providers
 

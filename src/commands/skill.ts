@@ -53,6 +53,6 @@ export async function skillCmd(ctx: Context): Promise<number> {
   if (sub !== "install") throw new UserError("Usage: acctx skill install [--global] [--agent a,b] [--hook] | acctx skill show");
   const agents = typeof ctx.flags["agent"] === "string" ? ctx.flags["agent"].split(",").map((s) => s.trim()).filter(Boolean) : undefined;
   await installSkill(ctx, ctx.flags["global"] ? "global" : "project", { ...(agents ? { agents } : {}), hook: Boolean(ctx.flags["hook"]) });
-  ctx.ui.hint("Other agents: acctx skill show, or `npx skills add <this repo>` once published.");
+  ctx.ui.hint("Other agents: acctx skill show, or `npx skills add Zoopast/acctx` once published.");
   return 0;
 }
