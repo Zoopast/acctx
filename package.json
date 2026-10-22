@@ -2,6 +2,14 @@
   "name": "acctx",
   "version": "0.1.0",
   "description": "acctx: switch between accounts for developer CLIs (Vercel, Convex, ...)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zoopast/acctx.git"
+  },
+  "homepage": "https://github.com/Zoopast/acctx#readme",
+  "bugs": {
+    "url": "https://github.com/Zoopast/acctx/issues"
+  },
   "type": "module",
   "bin": {
     "acctx": "./dist/src/cli.js"
