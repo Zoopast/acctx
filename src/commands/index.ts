@@ -13,7 +13,7 @@ const COMMANDS: Array<[string, string, string]> = [
   ["add <provider> [name]", "Log into a new account and save it as a profile", ""],
   ["import <provider> <name>", "Save the account the CLI is currently logged into", ""],
   ["init", "Write .acctx.json for this project (pick an account per provider)", "--from-active --shared --force"],
-  ["skill install", "Install the acctx skill for AI agents (project; --global for all projects)", "--global --agent --hook --force"],
+  ["skill install", "Install the acctx skill for AI agents (project; --global for all projects)", "--global --agent --hook --force --yes"],
   ["skill show", "Print the skill text for any agent", ""],
   ["status", "Check the project's .acctx.json against the active accounts", "--json"],
   ["use [provider] [name]", "Switch to a profile; with no args applies .acctx.json (or picker with --pick)", "--discard --pick"],
@@ -65,7 +65,7 @@ export async function runCommand(cmd: string, ctx: Context, reg: Registry): Prom
     case "current": return current(ctx, reg);
     case "add": case "login": return add(ctx, reg);
     case "import": case "save": return importCmd(ctx, reg);
-    case "init": return initCmd(ctx, reg, (scope) => installSkill(ctx, scope));
+    case "init": return initCmd(ctx, reg, (scope) => installSkill(ctx, scope, { keepExisting: true }));
     case "skill": return skillCmd(ctx);
     case "guard": return guardCmd(ctx, reg, readStdinText);
     case "status": return statusCmd(ctx, reg);

@@ -108,3 +108,30 @@ test("skill install --hook reports a dangling settings.json symlink as a user er
   const ctx = testContext({ store, env, cwd: root, args: ["install"], flags: { hook: true } });
   await assert.rejects(runCommand("skill", ctx, reg), /symlink to a missing file/);
 });
+
+test("skill install --agent without a value is an error, not a silent default", async () => {
+  const { store, env } = await setup();
+  for (const agent of [true, ",", " , "]) {
+    const ctx = testContext({ store, env, args: ["install"], flags: { agent } });
+    await assert.rejects(runCommand("skill", ctx, reg), /--agent needs a value/);
+  }
+});
+
+test("init --force --yes keeps a locally edited SKILL.md (force applies to .acctx.json only)", async () => {
+  const { home, store, env } = await setup();
+  const { fakeProvider } = await import("./helpers.js");
+  const p = fakeProvider();
+  const preg = { providers: [p], getProvider: () => p };
+  const root = path.join(home, "app"); await fs.mkdir(root, { recursive: true });
+  await store.writeMeta("fake", "work", { label: "me@acme.com", identity: { label: "me@acme.com" }, createdAt: "", updatedAt: "" });
+  await store.setActive("fake", "work");
+  const target = path.join(root, ".claude", "skills", "acctx", "SKILL.md");
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, "my edited skill\n");
+  await fs.writeFile(path.join(root, ".acctx.json"), "{}");
+  const ctx = testContext({ store, env, cwd: root, flags: { "from-active": true, force: true, yes: true } });
+  assert.equal(await runCommand("init", ctx, preg), 0);
+  assert.equal(await fs.readFile(target, "utf8"), "my edited skill\n");
+  assert.match(ctx.err.join("\n"), /differs from the packaged skill; kept/);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, ".acctx.json"), "utf8")), { fake: "work" });
+});

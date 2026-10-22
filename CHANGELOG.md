@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- `acctx skill install --agent` without a value (or an empty list) is now an
+  error instead of silently installing the defaults.
+- `acctx init --force` no longer overwrites a locally edited `SKILL.md`; the
+  `--force` applies to `.acctx.json` only, and the skill file is kept with a
+  warning (`acctx skill install --force` updates it).
+- Help lists `--yes` for `skill install`.
+
 ## 0.1.0
 
 First release.

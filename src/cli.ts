@@ -47,7 +47,7 @@ export async function main(argv: string[]): Promise<number> {
   const ctx: Context = { store, switcher: new Switcher(store, env), args: positional.slice(1), flags, ui, interactive, cwd: process.cwd() };
   const cmd = positional[0];
   if (!cmd || (flags["help"] && !cmd) || flags["version"]) {
-    if (flags["version"]) { ui.out("acctx 0.1.0"); return 0; }
+    if (flags["version"]) { ui.out("acctx 0.1.1"); return 0; }
     ui.out(helpText(ui));
     return 0;
   }
