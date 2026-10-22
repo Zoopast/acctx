@@ -1,5 +1,7 @@
 # acctx
 
+[![CI](https://github.com/Zoopast/acctx/actions/workflows/ci.yml/badge.svg)](https://github.com/Zoopast/acctx/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/acctx)](https://www.npmjs.com/package/acctx)
+
 Switch between accounts for developer CLIs. Supported: Vercel, Convex, GitHub
 (`gh`), Supabase, Cloudflare (`wrangler`), Clerk. Adding a provider is one
 small file.

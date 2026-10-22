@@ -43,5 +43,10 @@
     "switch",
     "cli"
   ],
-  "author": "Gabriel San Martin"
+  "author": "Gabriel San Martin",
+  "packageManager": "pnpm@11.5.2",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }
