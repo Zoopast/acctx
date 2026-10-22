@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.3
+
+Hardening and polish from the project-config review.
+
+- `.acctx.json` is opened with `O_NOFOLLOW | O_NONBLOCK` and checked through
+  the open handle, so symlinks and FIFOs are rejected without a race or a
+  hang, and the 64 KiB cap applies to the bytes actually read.
+- Discovery skips a `.acctx.json` owned by another user and no longer
+  mistakes a directory named `..something` for an ancestor of `$HOME`.
+- `acctx use` in project mode prints one summary, warns which providers
+  `--discard` will affect before switching, and reports blocked entries
+  even when nothing else is pending.
+- `acctx skill install --hook` validates `settings.json` before writing
+  any skill file, and its invalid-JSON error no longer echoes parser text.
+- `acctx guard` recognises `sudo -u <user>` / `-g <group>` / `--user=`
+  forms; provider CLI names are asserted unique.
+- Tagging a profile no longer changes its "used" time in `acctx list`.
+- `init` moved to its own module; tests added for every item above.
+
 ## 0.1.2
 
 - `acctx --version` reads the version from package.json, so a release is a

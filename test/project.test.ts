@@ -134,7 +134,7 @@ test("loadProject does not hang on a FIFO named .acctx.json", async (t) => {
   finally { clearTimeout(timer); }
 });
 
-test("loadProject rejects content over the cap even when stat reports a small size", async () => {
+test("loadProject rejects a file over the 64 KiB cap", async () => {
   const { home, root } = await repo();
   await fs.writeFile(path.join(root, ".acctx.json"), "{" + " ".repeat(64 * 1024) + "}");
   await assert.rejects(loadProject(root, home, KNOWN), /too large/);
