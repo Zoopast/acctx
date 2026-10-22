@@ -12,7 +12,7 @@
   },
   "type": "module",
   "bin": {
-    "acctx": "./dist/src/cli.js"
+    "acctx": "dist/src/cli.js"
   },
   "files": [
     "dist/src",
@@ -46,7 +46,6 @@
   "author": "Gabriel San Martin",
   "packageManager": "pnpm@11.5.2",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
