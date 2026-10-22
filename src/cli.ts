@@ -2,6 +2,7 @@
 import path from "node:path";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { realEnv } from "./core/env.js";
 import { Store } from "./core/store.js";
 import { Switcher } from "./core/switcher.js";
@@ -10,6 +11,9 @@ import { redact } from "./core/redact.js";
 import { createUi, type Ui } from "./core/ui.js";
 import { providers, getProvider } from "./providers/index.js";
 import { runCommand, helpText } from "./commands/index.js";
+
+/** Read once from the package manifest so releases need no code edit. */
+export const VERSION: string = (createRequire(import.meta.url)("../../package.json") as { version: string }).version;
 
 export interface Context {
   store: Store;
@@ -47,7 +51,7 @@ export async function main(argv: string[]): Promise<number> {
   const ctx: Context = { store, switcher: new Switcher(store, env), args: positional.slice(1), flags, ui, interactive, cwd: process.cwd() };
   const cmd = positional[0];
   if (!cmd || (flags["help"] && !cmd) || flags["version"]) {
-    if (flags["version"]) { ui.out("acctx 0.1.1"); return 0; }
+    if (flags["version"]) { ui.out(`acctx ${VERSION}`); return 0; }
     ui.out(helpText(ui));
     return 0;
   }

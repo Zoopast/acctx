@@ -32,4 +32,7 @@ walks through it.
 
 Bump `version` in `package.json`, update `CHANGELOG.md`, commit, then
 create a GitHub release with tag `v<version>`. The publish workflow runs
-the suite and publishes to npm with provenance.
+the suite and stages the version on npm with provenance (Trusted
+Publishing, no token). A maintainer then approves it with 2FA, either in
+the package's Staged Packages tab on npmjs.com or with
+`npm stage approve <stage-id>` (`npm stage list acctx` prints the id).

@@ -1,7 +1,10 @@
 name: Publish to npm
 
-# Publishes when a GitHub release is published. The release tag must be
+# Runs when a GitHub release is published. The release tag must be
 # v<version> and match package.json, and the full suite must pass first.
+# Authentication is npm Trusted Publishing (OIDC); there is no token.
+# The version is STAGED, not published: approve it on npmjs.com
+# (Staged Packages tab) or with `npm stage approve <stage-id>`.
 on:
   release:
     types: [published]
@@ -30,6 +33,6 @@ jobs:
             echo "Tag ${{ github.event.release.tag_name }} does not match package.json ($pkg)"; exit 1
           fi
       - run: pnpm test
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Use an npm that supports trusted publishing and staging
+        run: npm install -g npm@latest && npm --version
+      - run: npm stage publish --provenance --access public

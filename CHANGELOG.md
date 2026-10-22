@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- `acctx --version` reads the version from package.json, so a release is a
+  single bump.
+- Releases are published through npm Trusted Publishing and land in npm's
+  staging area for a 2FA approval; no publish token is stored anywhere.
+
 ## 0.1.1
 
 - `acctx skill install --agent` without a value (or an empty list) is now an

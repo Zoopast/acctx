@@ -43,3 +43,13 @@ test("provider detail renders storage explanation, files and profiles without AN
   assert.equal(providerSummaryLine({ ...st, overrides: [] }, s), "active work · 2 profiles");
   assert.equal(providerSummaryLine({ live: false, active: undefined, profiles: [], overrides: [] }, s), "not logged in · 0 profiles");
 });
+
+test("--version reports the package.json version", async () => {
+  const { VERSION } = await import("../src/cli.js");
+  const { packageRoot } = await import("../src/core/skillfile.js");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot(), "package.json"), "utf8")) as { version: string };
+  assert.equal(VERSION, pkg.version);
+  assert.match(VERSION, /^\d+\.\d+\.\d+/);
+});
