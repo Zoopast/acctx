@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+New provider: AWS (default-profile pointer; named profiles untouched)
+
 ## 0.1.3
 
 Hardening and polish from the project-config review.

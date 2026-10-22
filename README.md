@@ -60,7 +60,7 @@ A value selects one local profile by `profile` (local name), `account` (the logi
 
 `acctx skill install` copies `skills/acctx/SKILL.md` into `.claude/skills/` and `.agents/skills/` (`--global` for every project, `--agent cursor,codex` to pick). The skill tells the agent to run `acctx status --json` before provider CLIs and `acctx use` on mismatch, and never to pass `--discard`/`--force` by itself.
 
-`acctx skill install --hook` also adds a Claude Code `PreToolUse` hook (`acctx guard`) that blocks `vercel`/`convex`/`gh`/`supabase`/`wrangler`/`clerk` commands while the project's accounts are not active. Other tools: `acctx skill show`, or `npx skills add Zoopast/acctx`.
+`acctx skill install --hook` also adds a Claude Code `PreToolUse` hook (`acctx guard`) that blocks `vercel`/`convex`/`gh`/`supabase`/`wrangler`/`clerk`/`aws` commands while the project's accounts are not active. Other tools: `acctx skill show`, or `npx skills add Zoopast/acctx`.
 
 ## Providers
 
@@ -72,6 +72,7 @@ A value selects one local profile by `profile` (local name), `account` (the logi
 | `supabase` | `~/.supabase/access-token` | in place (`supabase login`) | `supabase whoami` with the token passed as an env var |
 | `cloudflare` | `$XDG_CONFIG_HOME/.wrangler/config/default.toml` | isolated (`XDG_CONFIG_HOME`) | `wrangler whoami` on a staged copy |
 | `clerk` | OS keyring entry `clerk-cli/oauth-access-token` (+ `config.json`) | in place (`clerk auth login`) | Clerk OAuth userinfo, refreshing expired sessions; offline `userId` fingerprint |
+| `aws` | `[default]` section of `~/.aws/config` + `~/.aws/credentials` (named profiles untouched) | isolated (`aws configure` with `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE`) | `aws sts get-caller-identity`; offline access key id or SSO account/role fingerprint |
 
 On a terminal `acctx providers` opens an arrow-key list showing each
 provider's state (logged in, active profile, profile count, env overrides);

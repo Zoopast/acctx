@@ -1,6 +1,6 @@
 ---
 name: acctx
-description: Use before running vercel, convex, gh, supabase, wrangler or clerk commands in a project that has a .acctx.json file. Verify the right accounts are active with `acctx status`; switch with `acctx use`. Also use when asked which account a project uses or to set one up.
+description: Use before running vercel, convex, gh, supabase, wrangler, clerk or aws commands in a project that has a .acctx.json file. Verify the right accounts are active with `acctx status`; switch with `acctx use`. Also use when asked which account a project uses or to set one up.
 ---
 
 # acctx: use the project's accounts
@@ -13,7 +13,7 @@ acctx switches the logins of developer CLIs (Vercel, Convex, GitHub, Supabase, C
    ```bash
    acctx status --json
    ```
-   Do this before the first `vercel`, `convex`, `gh`, `supabase`, `wrangler` or `clerk` command of the session, and again after anything that could have changed a login.
+   Do this before the first `vercel`, `convex`, `gh`, `supabase`, `wrangler`, `clerk` or `aws` command of the session, and again after anything that could have changed a login.
 2. If `"ok": false`, run `acctx use`, then `acctx status --json` again. Show the user both outputs.
 3. If `acctx use` refuses (an unsaved login, a different account, an unresolved entry), stop and tell the user what it said. Do not work around it.
 

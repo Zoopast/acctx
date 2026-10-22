@@ -243,6 +243,19 @@ endpoint with the public client id compiled into the CLI, refreshing an expired
 access token first and writing the new session back. Login is in place: the
 keyring cannot be isolated with a directory flag.
 
+### AWS
+
+The AWS CLI already has named profiles in `~/.aws/config` and
+`~/.aws/credentials`, so acctx does not swap those files. The live login is only
+the `[default]` section of each (paths follow `AWS_CONFIG_FILE` and
+`AWS_SHARED_CREDENTIALS_FILE`); named profiles, comments and other sections are
+preserved byte for byte by a text-level INI editor. A custom `LiveStore` reads
+`[default]` (plus an `[sso-session X]` it references, so the profile is
+self-contained) and writes it back atomically, keeping the file's mode. Login is
+isolated: `aws configure` runs against a scratch dir. Identity is `aws sts
+get-caller-identity`; the offline fingerprint is the access key id or SSO
+account/role, never a secret.
+
 ## Out of scope (v1)
 
 OS keyring backend, team switching inside one account (`vercel switch` already
